@@ -11,19 +11,18 @@ CREATE TABLE questions(
     title varchar(60) UNIQUE NOT NULL,
     content TEXT NOT NULL,
     created_by bigint(20) NOT NULL,
-    corrected_answered_by bigint(20),
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (correct_answered_by) REFERENCES answers(id),
+    correct_answer bigint(20),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT creator_fk FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
     PRIMARY KEY(id)
 );
 
 CREATE TABLE TagsQuestions(
     tag_id bigint(20) NOT NULL,
     question_id bigint(20) NOT NULL,
-    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
-    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    CONSTRAINT tag_fk FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+    CONSTRAINT question_fk FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
     CONSTRAINT tag_question_pk PRIMARY KEY (tag_id, question_id)
 );
 
@@ -32,15 +31,17 @@ CREATE TABLE answers(
     content text NOT NULL,
     user_id bigint(20) NOT NULL,
     question_id bigint(20) NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT parent_question_fk FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
     PRIMARY KEY (id)
 );
+
+ALTER TABLE "questions" CONSTRAINT "answer_fk" FOREIGN KEY (correct_answer) REFERENCES answers(id);
 # --- !Downs
 
-DROP TABLE tags;
 DROP TABLE TagsQuestions;
+DROP TABLE tags;
 DROP TABLE questions;
 DROP TABLE answers;
