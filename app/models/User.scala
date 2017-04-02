@@ -3,6 +3,7 @@ package models
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
+import slick.driver.MySQLDriver.api.{Tag => SlickTag}
 import slick.driver.MySQLDriver.api._
 
 case class User(
@@ -33,7 +34,7 @@ object User {
   }
 }
 
-class UserTable(tag: Tag) extends Table[User](tag, "users") {
+class UserTable(tag: SlickTag) extends Table[User](tag, "users") {
   def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
   def username = column[String]("username")
   def fullname = column[String]("fullname")
@@ -42,4 +43,3 @@ class UserTable(tag: Tag) extends Table[User](tag, "users") {
 
   def * = (id, username, fullname, email, password) <> ((User.apply _).tupled, User.unapply _)
 }
-

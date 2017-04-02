@@ -28,4 +28,10 @@ class AuthController(userDao: UserDao) extends Controller {
       }
     )
   }
+
+  def show(id: Long) = Action.async(parse.json) { request =>
+    userDao.findById(id).map(u => Ok(Json.toJson(u))).recoverWith {
+      case _ => Future { NotFound}
+    }
+  }
 }
