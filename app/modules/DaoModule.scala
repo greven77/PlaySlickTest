@@ -9,4 +9,6 @@ trait DaoModule {
   def dbConfig: DatabaseConfig[JdbcProfile]
 
   lazy val userDao = wire[UserDao]
+  lazy val tagDao  = wire[TagDao]
+  lazy val questionDao = wire[QuestionDao]
 }

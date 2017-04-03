@@ -11,7 +11,11 @@ trait ControllerModule {
   // Dependencies
   implicit def ec: ExecutionContext
   def userDao: UserDao
+  def tagDao: TagDao
+  def questionDao: QuestionDao
 
   // Controllers
   lazy val authController = wire[AuthController]
+  lazy val tagController  = wire[TagController]
+  lazy val questionController = wire[QuestionController]
 }

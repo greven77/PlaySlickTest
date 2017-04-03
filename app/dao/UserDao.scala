@@ -6,7 +6,6 @@ import scala.concurrent.Future
 import slick.backend.DatabaseConfig
 import slick.driver.JdbcProfile
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
-import play.api.Logger
 
 class UserDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[User] {
   import dbConfig.driver.api._
@@ -16,7 +15,6 @@ class UserDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[User] {
 
   override def add(user: User): Future[User] = {
     val secureUser = user.copy(password = hashPW(user.password))
-    Logger.debug(secureUser.toString)
     db.run(usersReturningRow += secureUser)
   }
 
