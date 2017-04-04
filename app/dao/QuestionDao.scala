@@ -1,8 +1,6 @@
 package dao
 
-import models.{Question, QuestionTable, FavouriteQuestion,
-  FavouriteQuestionTable, Answer, AnswerTable, User,
-  UserTable, QuestionThread, Vote, VoteTable}
+import models._
 import slick.backend.DatabaseConfig
 import slick.driver.JdbcProfile
 import scala.concurrent.Future
@@ -17,26 +15,34 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   val answers = TableQuery[AnswerTable]
   val users = TableQuery[UserTable]
   val votes = TableQuery[VoteTable]
-  type AnswerUserQuery = Query[AnswerTable, Answer, Seq]
+  val tags = TableQuery[TagTable]
+  val questionTags = TableQuery[TagsQuestionsTable]
+  type AnswersQuery = Query[AnswerTable, Answer, Seq]
 
   override def add(question: Question): Future[Question] =
     db.run(questionsReturningRow += question)
 
-  override def update(q2: Question) = Future[Unit] {
-    db.run(questions.filter(_.id === q2.id).map(q =>
+  override def update(id: Long, title:String, content: String): Future[Option[Question]] = {
+    db.run(questions.filter(_.id === id).map(q =>
       (q.title, q.content)
-    ).update(q2.title, q2.content))
+    ).update((title, content))
+      andThen
+      findByIdQuery(id)
+    )
   }
 
-  def setCorrectAnswer(qId: Long, correct_answer_id: Option[Long]) = Future[Unit] {
+  def setCorrectAnswer(qId: Long, correct_answer_id: Option[Long]): Future[Option[Question]]  = {
     val query = questions.filter(_.id === qId).map(_.correct_answer)
-    db.run(query.update(correct_answer_id))
+    db.run(query.update(correct_answer_id)
+      andThen findByIdQuery(qId))
   }
 
-  def markFavourite(id: Long, user_id: Long): Future[FavouriteQuestion] = {
+  def markFavourite(favouriteQuestion: FavouriteQuestion): Future[FavouriteQuestion] = {
     val markFavourite =
-      favouriteQuestions += FavouriteQuestion(id, user_id)
-    val retrieveFavourite = findFQ(id, user_id).result.head
+      favouriteQuestions += favouriteQuestion
+    val question_id = favouriteQuestion.question_id
+    val user_id = favouriteQuestion.user_id
+    val retrieveFavourite = findFQ(question_id, user_id).result.head
 
     db.run(markFavourite andThen retrieveFavourite)
   }
@@ -49,7 +55,24 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   override def findById(id: Long): Future[Option[Question]] =
     db.run(findByIdQuery(id))
 
-  override def findAndRetrieveThread(id: Long): Future[QuestionThread] = {
+  def findByTag(tag: String): Future[Seq[Question]] = {
+    val findQuestionsQuery = tags.filter(_.text === tag).
+      join(questionTags).on(_.id === _.tag_id).
+      join(questions).on {
+        case ((tag, questionTag), question) => questionTag.question_id === question.id
+      }.result
+
+    val action = for {
+      questionsResult <- findQuestionsQuery
+    } yield {
+      questionsResult.map {
+          case ((tag, questionTag), question) => question
+      }
+    }
+    db.run(action)
+  }
+
+  def findAndRetrieveThread(id: Long): Future[QuestionThread] = {
     val filteredAnswers = answers.filter(_.question_id === id)
 
     for {
@@ -62,7 +85,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   override def remove(id: Long): Future[Int] =
     db.run(questions.filter(_.id === id).delete)
 
-  private def answerVotesQuery(answers: AnswerUserQuery): DBIO[Map[Long, Int]] = {
+  private def answerVotesQuery(answers: AnswersQuery): DBIO[Map[Long, Int]] = {
     answers.
       join(votes).on(_.id === _.answer_id).result.
       map { rows =>
@@ -71,7 +94,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
       }
   }
 
-  private def answerUsersQuery(votesMap: Map[Long, Int], answers: AnswerUserQuery) = {
+  private def answerUsersQuery(votesMap: Map[Long, Int], answers: AnswersQuery) = {
     answers.
       join(questions).on(_.question_id  === _.id).
       join(users).on { case ((answer, question), user) => question.created_by === user.id }.
