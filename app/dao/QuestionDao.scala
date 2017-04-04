@@ -8,7 +8,7 @@ import slick.driver.JdbcProfile
 import scala.concurrent.Future
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
-class QuestionDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Question] {
+class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Question] {
   import dbConfig.driver.api._
 
   val db = dbConfig.db
@@ -17,6 +17,7 @@ class QuestionDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Questio
   val answers = TableQuery[AnswerTable]
   val users = TableQuery[UserTable]
   val votes = TableQuery[VoteTable]
+  type AnswerUserQuery = Query[AnswerTable, Answer, Seq]
 
   override def add(question: Question): Future[Question] =
     db.run(questionsReturningRow += question)
@@ -49,34 +50,38 @@ class QuestionDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Questio
     db.run(findByIdQuery(id))
 
   override def findAndRetrieveThread(id: Long): Future[QuestionThread] = {
-    // perform a join between question and answer tables
     val filteredAnswers = answers.filter(_.question_id === id)
 
-    val countVotes = filteredAnswers.
-      join(votes).on(_.id === _.answer_id).
-      groupBy { case (answer, vote) => answer.id }.
-      map { case (answer_id, group) =>
-        (answer_id, group.map { case (answer, vote) => vote.value}.sum)
-      } // maybe it would be better to return in a class instead
- 
-    val answersUsers = filteredAnswers.
-        join(questions).on(_.question_id  === _.id).
-        join(users).on { case ((answer, question), user) => question.created_by === user.id }.
-        map { case ((answer, question), user ) =>
-            (answer, user)
-        }
-
-    val setup = for {
-      question <- findByIdQuery(id)
-      au       <- answersUsers.result
-      voteCount <- countVotes
-    } yield QuestionThread(question, (au, voteCount))
-
-    db.run(setup)
+    for {
+      votesMap <- db.run(answerVotesQuery(filteredAnswers))
+      question <- db.run(findByIdQuery(id))
+      answers       <- db.run(answerUsersQuery(votesMap, filteredAnswers))
+    } yield QuestionThread(question, (answers))
   }
 
   override def remove(id: Long): Future[Int] =
     db.run(questions.filter(_.id === id).delete)
+
+  private def answerVotesQuery(answers: AnswerUserQuery): DBIO[Map[Long, Int]] = {
+    answers.
+      join(votes).on(_.id === _.answer_id).result.
+      map { rows =>
+        rows.groupBy { case (answer, vote) => answer.id.get }.
+        mapValues(values => values.map { case (answer, vote) => vote.value}.sum)
+      }
+  }
+
+  private def answerUsersQuery(votesMap: Map[Long, Int], answers: AnswerUserQuery) = {
+    answers.
+      join(questions).on(_.question_id  === _.id).
+      join(users).on { case ((answer, question), user) => question.created_by === user.id }.
+      result.
+      map { rows =>
+        rows.map { case ((answer, question), user) =>
+          (answer, user, votesMap.getOrElse(answer.id.get, 0))
+        }
+      }
+  }
 
   private def findByIdQuery(id: Long) =
     questions.filter(_.id === id).result.headOption
