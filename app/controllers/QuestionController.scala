@@ -18,7 +18,13 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
 
   }
 
+  // shows only the content of the question excluding answers
   def show(id: Long) = Action.async { request =>
+
+  }
+
+  // shows question with answers included
+  def showThread(id: Long) = Action.async { request =>
 
   }
 
