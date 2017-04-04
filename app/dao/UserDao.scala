@@ -18,7 +18,7 @@ class UserDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[User] {
     db.run(usersReturningRow += secureUser)
   }
 
-  override def update(u2: User) =  Future[Unit] {
+  def update(u2: User) =  Future[Unit] {
     db.run(
       users.filter(_.id === u2.id).map(u =>
         (u.username, u.fullname, u.email, u.password))

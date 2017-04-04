@@ -22,7 +22,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   override def add(question: Question): Future[Question] =
     db.run(questionsReturningRow += question)
 
-  override def update(id: Long, title:String, content: String): Future[Option[Question]] = {
+  def update(id: Long, title:String, content: String): Future[Option[Question]] = {
     db.run(questions.filter(_.id === id).map(q =>
       (q.title, q.content)
     ).update((title, content))
