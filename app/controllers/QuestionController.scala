@@ -2,13 +2,15 @@ package controllers
 
 import dao.QuestionDao
 import models.{Question, FavouriteQuestion}
-import play.api.libs.json.{Json, JsError}
+import play.api.libs.json._
 import play.api.mvc.{Action, Controller}
 
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Failure
 import scala.util.Success
+
+import utils.TaggedQuestion
 
 class QuestionController(questionDao: QuestionDao) extends Controller {
   // add pagination and sorting later
@@ -40,10 +42,11 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
   }
 
   def create = Action.async(parse.json) { request =>
-    val questionResult = request.body.validate[Question]
+    val questionResult = request.body.validate[TaggedQuestion]
+
     questionResult.fold(
       valid = {q =>
-        val question = questionDao.add(q)
+        val question = questionDao.addWithTags(q)
         question.map(q => Created(Json.toJson(q))).recoverWith {
           case _ => Future { InternalServerError }
         }
@@ -68,14 +71,20 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
   }
 
   // TODO: add business rules
-  def setCorrectAnswer = Action.async(parse.json) { request =>
-    val answer_id = Some((request.body \ "answer_id").as[Long])
-    val question_id = (request.body \ "id").as[Long]
-    questionDao.setCorrectAnswer(question_id, answer_id).
-      map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
-      recoverWith {
-        case _ => Future { InternalServerError }
+  def setCorrectAnswer(id: Long) = Action.async(parse.json) { request =>
+    (request.body \ "answer_id").validate[Long] match {
+      case a: JsSuccess[Long] => {
+        val answer_id = Some(a.get)
+        questionDao.setCorrectAnswer(id, answer_id).
+          map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
+          recoverWith {
+            case _ => Future { InternalServerError }
+          }
       }
+
+      case e: JsError => Future { BadRequest }
+    }
+    //val question_id = (request.body \ "id").as[Long]
   }
 
   // TODO: add business rules
@@ -87,7 +96,7 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
   }
 
   // TODO: add business rules
-  def markFavourite = Action.async(parse.json) { request =>
+  def markFavourite(id: Long) = Action.async(parse.json) { request =>
     val fqResult = request.body.validate[FavouriteQuestion]
 
     fqResult.fold(

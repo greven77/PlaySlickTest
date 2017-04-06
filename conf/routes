@@ -15,17 +15,17 @@ DELETE   /api/tags/:id              controllers.TagController.destroy(id: Long)
 
 # questions and question threads
 
-#GET    /api/questions                     controllers.QuestionController.index
-#GET    /api/questions/tagged/:tag         controllers.QuestionController.tagged(tag: String)
-#GET    /api/questions/:id                 controllers.QuestionController.show(id: Long)
-#GET    /api/questions/:id/thread          controllers.QuestionController.showThread(id: Long)
-#POST   /api/questions                     controllers.QuestionController.create
-#PUT    /api/questions/:id                 controllers.QuestionController.update(id: Long)
-#PUT    /api/questions/:id/correctanswer   controllers.QuestionController.setCorrectAnswer
-#DELETE /api/questions/:id                 controllers.QuestionController.destroy(id: Long)
+GET    /api/questions                     controllers.QuestionController.index
+GET    /api/questions/tagged/:tag         controllers.QuestionController.tagged(tag: String)
+GET    /api/questions/:id                 controllers.QuestionController.show(id: Long)
+GET    /api/questions/:id/thread          controllers.QuestionController.showThread(id: Long)
+POST   /api/questions                     controllers.QuestionController.create
+PUT    /api/questions/:id                 controllers.QuestionController.update(id: Long)
+PUT    /api/questions/:id/correctanswer   controllers.QuestionController.setCorrectAnswer(id: Long)
+DELETE /api/questions/:id                 controllers.QuestionController.destroy(id: Long)
 
-#POST   /api/questions/:id/markFavourite   controllers.QuestionController.markFavourite(id: Long)
-#DELETE /api/questions/:id/removeFavourite controllers.QuestionController.removeFavourite(id: Long)
+POST   /api/questions/:id/markFavourite   controllers.QuestionController.markFavourite(id: Long)
+DELETE /api/questions/:id/removeFavourite controllers.QuestionController.removeFavourite(id: Long)
 
 # answers, answer comments and voting
 #POST   /api/questions/:qId/answer         controllers.AnswerController.create(qId:Long)

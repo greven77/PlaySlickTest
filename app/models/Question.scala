@@ -1,7 +1,9 @@
 package models
 
 import org.joda.time.DateTime
-import play.api.libs.json.Json
+import play.api.libs.json._
+import play.api.libs.json.Reads
+import play.api.libs.functional.syntax._
 import slick.driver.MySQLDriver.api.{Tag => SlickTag}
 import slick.driver.MySQLDriver.api._
 
@@ -11,6 +13,25 @@ case class Question(id: Option[Long], title: String, content: String,
 
 object Question {
   implicit val format = Json.format[Question]
+
+  implicit val questionReads: Reads[Question] = (
+    (JsPath \ "id").readNullable[Long] and
+    (JsPath \ "title").read[String] and
+      (JsPath \ "content").read[String] and
+      (JsPath \ "created_by").read[Long] and
+      (JsPath \ "correct_answer").readNullable[Long] and
+      (JsPath \ "created_at").readNullable[DateTime] and
+      (JsPath \ "updated_at").readNullable[DateTime]
+  )(Question.apply _)
+
+  implicit val userWrites = new Writes[User] {
+    def writes(user: User) = Json.obj(
+      "id" -> user.id,
+      "username" -> user.username,
+      "fullname" -> user.fullname,
+      "email"  -> user.email
+    )
+  }
 }
 
 class QuestionTable(tag: SlickTag) extends Table[Question](tag, "questions") {

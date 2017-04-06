@@ -6,6 +6,8 @@ import slick.driver.JdbcProfile
 import scala.concurrent.Future
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
+import utils.TaggedQuestion
+
 class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Question] {
   import dbConfig.driver.api._
 
@@ -20,7 +22,27 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   type AnswersQuery = Query[AnswerTable, Answer, Seq]
 
   override def add(question: Question): Future[Question] =
-    db.run(questionsReturningRow += question)
+    db.run(addQuestionQuery(question))
+
+  def addWithTags(tq: TaggedQuestion): Future[TaggedQuestion] = {
+    val question = tq.question
+    val tagIds = tq.tagIds
+    for {
+      question <- db.run(addQuestionQuery(question))
+      tags <- db.run(insertTags(question.id, tagIds)) if !tagIds.isEmpty
+      tq <- db.run(getTagsQuery(question.id)) if !tagIds.isEmpty
+    } yield TaggedQuestion(question, Some(tq))
+  }
+
+  def insertTags(questionId: Option[Long], tagIds: Option[Seq[Long]]) = {
+    val question_id = questionId.get
+    val updatedTags = tagIds.get.map(TagsQuestions(_, question_id))
+    questionTags ++= updatedTags
+  }
+
+  def getTagsQuery(id: Option[Long]) = {
+    questionTags.filter(_.question_id === id).map(_.tag_id).result
+  }
 
   def update(id: Long, title:String, content: String): Future[Option[Question]] = {
     db.run(questions.filter(_.id === id).map(q =>
@@ -110,6 +132,9 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     questions.filter(_.id === id).result.headOption
   private def findFQ(id: Long, user_id: Long) =
     favouriteQuestions.filter(fq => fq.question_id === id && fq.user_id === user_id)
+
+  private def addQuestionQuery(question: Question) =
+    questionsReturningRow += question
   private def questionsReturningRow =
     questions returning questions.map(_.id) into { (q, id) =>
       q.copy(id = id)
