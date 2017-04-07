@@ -95,11 +95,11 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     db.run(action)
   }
 
-  def findAndRetrieveThread(id: Long): Future[QuestionThread] = {
+  def findAndRetrieveThread(id: Long, logged_user_id: Option[Long] = None): Future[QuestionThread] = {
     val filteredAnswers = answers.filter(_.question_id === id)
 
     for {
-      votesMap <- db.run(answerVotesQuery(filteredAnswers))
+      votesMap <- db.run(answerVotesQuery(filteredAnswers, logged_user_id))
       question <- db.run(findByIdQuery(id))
       tags     <- db.run(getTagsQuery(id))
       answers  <- db.run(answerUsersQuery(votesMap, filteredAnswers))
@@ -131,23 +131,29 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
       map { case (questionTag, tag) => tag }.
       result
 
-  private def answerVotesQuery(answers: AnswersQuery): DBIO[Map[Long, Int]] = {
+  private def answerVotesQuery(answers: AnswersQuery, logged_user_id: Option[Long]): DBIO[Map[Long, (Int, Int)]] = {
     answers.
       join(votes).on(_.id === _.answer_id).result.
       map { rows =>
         rows.groupBy { case (answer, vote) => answer.id.get }.
-        mapValues(values => values.map { case (answer, vote) => vote.value}.sum)
+          mapValues { values =>
+            val voteSum = values.map { case (answer, vote) => vote.value}.sum
+            val userVoteValue = values.
+              filter { case (answer, vote) => vote.user_id == logged_user_id}
+              .map { case (answer, vote) => vote.value}.headOption
+            (voteSum, userVoteValue.getOrElse(0))
+          }
       }
   }
 
-  private def answerUsersQuery(votesMap: Map[Long, Int], answers: AnswersQuery) = {
+  private def answerUsersQuery(votesMap: Map[Long, (Int, Int)], answers: AnswersQuery) = {
     answers.
       join(questions).on(_.question_id  === _.id).
       join(users).on { case ((answer, question), user) => question.created_by === user.id }.
       result.
       map { rows =>
         rows.map { case ((answer, question), user) =>
-          (answer, user, votesMap.getOrElse(answer.id.get, 0))
+          (answer, user, votesMap.getOrElse(answer.id.get, (0,0)))
         }
       }
   }
