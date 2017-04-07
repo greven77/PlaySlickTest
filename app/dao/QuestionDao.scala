@@ -25,32 +25,32 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     db.run(addQuestionQuery(question))
 
   def addWithTags(tq: TaggedQuestion): Future[TaggedQuestion] = {
-    val question = tq.question
-    val tagIds = tq.tagIds
+    val tags = getTagsQuestions(tq)
     for {
-      question <- db.run(addQuestionQuery(question))
-      tags <- db.run(insertTags(question.id, tagIds)) if !tagIds.isEmpty
-      tq <- db.run(getTagsQuery(question.id)) if !tagIds.isEmpty
-    } yield TaggedQuestion(question, Some(tq))
+      question <- db.run(addQuestionQuery(tq.question))
+      tags <- db.run(insertTagsQuery(tags)) if !tq.tagIds.isEmpty
+      taggedQuestionIds <- db.run(getTagsIdsQuery(question.id)) if !tq.tagIds.isEmpty
+    } yield TaggedQuestion(question, Some(taggedQuestionIds))
   }
 
-  def insertTags(questionId: Option[Long], tagIds: Option[Seq[Long]]) = {
-    val question_id = questionId.get
-    val updatedTags = tagIds.get.map(TagsQuestions(_, question_id))
-    questionTags ++= updatedTags
-  }
-
-  def getTagsQuery(id: Option[Long]) = {
-    questionTags.filter(_.question_id === id).map(_.tag_id).result
-  }
-
-  def update(id: Long, title:String, content: String): Future[Option[Question]] = {
-    db.run(questions.filter(_.id === id).map(q =>
+  def update(tq: TaggedQuestion): Future[Option[TaggedQuestion]] = {
+    val id = tq.question.id
+    val title = tq.question.title
+    val content = tq.question.content
+    val updateQuestion = (questions.filter(_.id === id).map(q =>
       (q.title, q.content)
     ).update((title, content))
       andThen
-      findByIdQuery(id)
+      findByIdQuery(id.get)
     )
+
+    val updatedTagsQuery = insertOrUpdateTagsQuery(getTagsQuestions(tq))
+
+    for {
+      question <- db.run(updateQuestion)
+      tags <- db.run(updatedTagsQuery) if !tq.tagIds.isEmpty
+      taggedQuestionIds <- db.run(getTagsIdsQuery(tq.question.id))
+    } yield Option(TaggedQuestion(question.get, Some(taggedQuestionIds)))
   }
 
   def setCorrectAnswer(qId: Long, correct_answer_id: Option[Long]): Future[Option[Question]]  = {
@@ -74,6 +74,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   override def findAll(): Future[Seq[Question]] = db.run(questions.result)
 
+  // change query in order to join tags and answers
   override def findById(id: Long): Future[Option[Question]] =
     db.run(findByIdQuery(id))
 
@@ -100,12 +101,35 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     for {
       votesMap <- db.run(answerVotesQuery(filteredAnswers))
       question <- db.run(findByIdQuery(id))
-      answers       <- db.run(answerUsersQuery(votesMap, filteredAnswers))
-    } yield QuestionThread(question, (answers))
+      tags     <- db.run(getTagsQuery(id))
+      answers  <- db.run(answerUsersQuery(votesMap, filteredAnswers))
+    } yield QuestionThread(question, tags, answers)
   }
 
   override def remove(id: Long): Future[Int] =
     db.run(questions.filter(_.id === id).delete)
+
+  private def insertTagsQuery(updatedTags: Seq[TagsQuestions]) =
+    questionTags ++= updatedTags
+
+  private def insertOrUpdateTagsQuery(updatedTags: Seq[TagsQuestions]) =
+    DBIO.sequence(updatedTags.map(questionTags.insertOrUpdate(_)))
+
+  private def getTagsQuestions(tq: TaggedQuestion): Seq[TagsQuestions] = {
+    val question = tq.question
+    val tagIds = tq.tagIds
+    val question_id = question.id.get
+    tagIds.get.map(TagsQuestions(_, question_id))
+  }
+  private def getTagsIdsQuery(id: Option[Long]) = {
+    questionTags.filter(_.question_id === id).map(_.tag_id).result
+  }
+
+  private def getTagsQuery(id: Long) =
+    questionTags.filter(_.question_id === id).
+      join(tags).on(_.question_id === _.id).
+      map { case (questionTag, tag) => tag }.
+      result
 
   private def answerVotesQuery(answers: AnswersQuery): DBIO[Map[Long, Int]] = {
     answers.

@@ -2,7 +2,8 @@ package models
 
 import play.api.libs.json._
 
-case class QuestionThread(question: Option[Question], answers: Seq[(Answer, User, Int)])
+case class QuestionThread(question: Option[Question], tags: Seq[Tag],
+  answers: Seq[(Answer, User, Int)])
 
 object QuestionThread {
   implicit val answerUserWrites = new Writes[(Answer, User, Int)] {

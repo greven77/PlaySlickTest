@@ -2,6 +2,7 @@ package controllers
 
 import dao.QuestionDao
 import models.{Question, FavouriteQuestion}
+import java.sql._
 import play.api.libs.json._
 import play.api.mvc.{Action, Controller}
 
@@ -23,13 +24,22 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
   def tagged(tag: String) = Action.async { request =>
     questionDao.findByTag(tag).map { questions =>
       Ok(Json.toJson(questions))
+    }.recoverWith {
+      case e: SQLIntegrityConstraintViolationException  =>
+        Future { NotFound }
+      case _  => Future { InternalServerError }
     }
   }
 
   // shows only the content of the question excluding answers
   def show(id: Long) = Action.async { request =>
+    // change query in order to join tags and answers
     questionDao.findById(id).map(q => Ok(Json.toJson(q))).recoverWith {
       case _ => Future { NotFound }
+    }.recoverWith {
+      case e: SQLIntegrityConstraintViolationException  =>
+        Future { NotFound }
+      case _  => Future { InternalServerError }
     }
   }
 
@@ -59,15 +69,28 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
     )
   }
   // TODO: add business rules
+  // add update tags feature
   def update(id: Long) = Action.async(parse.json) { request =>
     // add validation
-    val updatedTitle = (request.body \ "title").as[String]
-    val updatedContent = (request.body \ "content").as[String]
-    questionDao.update(id, updatedTitle, updatedContent).
-      map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
-      recoverWith {
-        case _ => Future { InternalServerError }
+    val questionResult = request.body.validate[TaggedQuestion]
+
+    questionResult.fold(
+      valid = { q =>
+        questionDao.update(q).
+          map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
+          recoverWith {
+            case e: SQLIntegrityConstraintViolationException  =>
+              Future { NotFound("invalid id or id not provided")}
+            case _ => Future { InternalServerError }
+          }
+      },
+      invalid = { errors =>
+        Future.successful(
+          BadRequest(JsError.toJson(errors))
+        )
       }
+    )
+
   }
 
   // TODO: add business rules
