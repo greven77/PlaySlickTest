@@ -24,19 +24,16 @@ PUT    /api/questions/:id                 controllers.QuestionController.update(
 PUT    /api/questions/:id/correctanswer   controllers.QuestionController.setCorrectAnswer(id: Long)
 DELETE /api/questions/:id                 controllers.QuestionController.destroy(id: Long)
 
-POST   /api/questions/:id/markFavourite   controllers.QuestionController.markFavourite(id: Long)
-DELETE /api/questions/:id/removeFavourite controllers.QuestionController.removeFavourite(id: Long)
+POST   /api/questions/:id/markfavourite   controllers.QuestionController.markFavourite(id: Long)
+DELETE /api/questions/:id/removefavourite controllers.QuestionController.removeFavourite(id: Long)
 
 # answers, answer comments and voting
-#POST   /api/questions/:qId/answer         controllers.AnswerController.create(qId:Long)
-#PUT    /api/questions/:qId/answer/:id     controllers.AnswerController.update(qId: Long, id: Long)
-#DELETE /api/questions/:qId/answer/:id     controllers.AnswerController.destroy(qId: Long, id: Long)
+POST   /api/questions/:qId/answer         controllers.AnswerController.create(qId:Long)
+PUT    /api/questions/:qId/answer/:id     controllers.AnswerController.update(qId: Long, id: Long)
+DELETE /api/questions/:qId/answer/:id     controllers.AnswerController.destroy(qId: Long, id: Long)
 
-#POST   /api/answer/:id/upvote             controllers.AnswerController.upvote(id: Long)
-#POST   /api/answer/:id/downvote           controllers.AnswerController.downvote(id: Long)
+POST   /api/answer/:id/vote             controllers.AnswerController.vote(id: Long)
 
-#POST   /api/answer/:id/comment            controllers.CommentController.create(id: Long)
-#PUT    /api/answer/:aId/comment/:id       controllers.CommentController.update(aId: Long, id: Long)
-#DELETE /api/answer/:aId/comment/:id       controllers.CommentController.destroy(aId: Long, id: Long)
+
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)

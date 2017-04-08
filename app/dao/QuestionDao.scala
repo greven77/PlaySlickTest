@@ -6,7 +6,7 @@ import slick.driver.JdbcProfile
 import scala.concurrent.Future
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
-import utils.TaggedQuestion
+import utils.{SortingPaginationWrapper, TaggedQuestion}
 
 class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Question] {
   import dbConfig.driver.api._
@@ -69,10 +69,15 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     db.run(markFavourite andThen retrieveFavourite)
   }
 
-  def removeFavourite(id: Long, user_id: Long): Future[Int] =
-    db.run(findFQ(id, user_id).delete)
+  def removeFavourite(fq: FavouriteQuestion): Future[Int] =
+    db.run(findFQ(fq.question_id, fq.user_id).delete)
 
-  override def findAll(): Future[Seq[Question]] = db.run(questions.result)
+  import org.joda.time.DateTime
+
+  override def findAll(settings: SortingPaginationWrapper): Future[Seq[Question]] =
+    db.run(questions.
+      sortBy(_.title.desc).
+      result)
 
   // change query in order to join tags and answers
   override def findById(id: Long): Future[Option[Question]] =
@@ -127,7 +132,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   private def getTagsQuery(id: Long) =
     questionTags.filter(_.question_id === id).
-      join(tags).on(_.question_id === _.id).
+      join(tags).on(_.tag_id === _.id).
       map { case (questionTag, tag) => tag }.
       result
 

@@ -11,4 +11,5 @@ trait DaoModule {
   lazy val userDao = wire[UserDao]
   lazy val tagDao  = wire[TagDao]
   lazy val questionDao = wire[QuestionDao]
+  lazy val answerDao = wire[AnswerDao]
 }

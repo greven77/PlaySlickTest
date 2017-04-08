@@ -11,14 +11,27 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Failure
 import scala.util.Success
 
-import utils.TaggedQuestion
+import utils.{TaggedQuestion, SortingPaginationWrapper}
 
 class QuestionController(questionDao: QuestionDao) extends Controller {
   // add pagination and sorting later
-  def index = Action.async { request =>
-    questionDao.findAll().map { questions =>
-      Ok(Json.toJson(questions))
-    }
+  import play.api.Logger
+
+  def index = Action.async(parse.json) { request =>
+    val result =
+      request.body.validate[SortingPaginationWrapper]
+    result.fold(
+      valid = { r =>
+        questionDao.findAll(r).map { questions =>
+          Ok(Json.toJson(questions))
+        }
+      },
+      invalid = { errors =>
+        Future.successful(
+          BadRequest(JsError.toJson(errors))
+        )
+      }
+    )
   }
 
   def tagged(tag: String) = Action.async { request =>
@@ -140,9 +153,24 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
 
   // TODO: add business rules
   def removeFavourite(id: Long) = Action.async(parse.json) { request =>
-    questionDao.remove(id).map(question => Ok(s"Tag with id: ${id} removed")).recoverWith {
-      case _ => Future { NotFound }
-    }
+    val fqResult = request.body.validate[FavouriteQuestion]
+
+    fqResult.fold(
+      valid = { fq =>
+        questionDao.removeFavourite(fq).map(favourite =>
+          favourite match {
+            case 1 => Ok(s"Tag with id: ${fq.question_id} removed")
+            case 0 => NotFound
+          }).recoverWith {
+          case _ => Future { InternalServerError }
+        }
+      },
+      invalid = { errors =>
+        Future.successful(
+          BadRequest(JsError.toJson(errors))
+        )
+      }
+    )
   }
 
   private def getQuestion(id: Long): Future[Option[Question]] = {

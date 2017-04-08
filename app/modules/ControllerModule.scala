@@ -13,9 +13,11 @@ trait ControllerModule {
   def userDao: UserDao
   def tagDao: TagDao
   def questionDao: QuestionDao
+  def answerDao: AnswerDao
 
   // Controllers
   lazy val authController = wire[AuthController]
   lazy val tagController  = wire[TagController]
   lazy val questionController = wire[QuestionController]
+  lazy val answerController = wire[AnswerController]
 }
