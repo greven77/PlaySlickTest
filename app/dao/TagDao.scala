@@ -12,11 +12,11 @@ class TagDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[TagM] {
   val db = dbConfig.db
   val tags = TableQuery[TagTable]
 
-  override def add(tag: TagM): Future[TagM] = {
+  def add(tag: TagM): Future[TagM] = {
     db.run(tagsReturningRow += tag)
   }
 
-  override def findAll(): Future[Seq[TagM]] = db.run(tags.result)
+  def findAll(): Future[Seq[TagM]] = db.run(tags.result)
 
   override def findById(id: Long): Future[Option[TagM]] =
     db.run(tags.filter(_.id === id).result.headOption)

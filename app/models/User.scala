@@ -11,7 +11,8 @@ case class User(
   username: String,
   fullname: String,
   email: String,
-  password: String
+  password: String,
+  token: Option[String] = None
 )
 
 object User {
@@ -21,7 +22,8 @@ object User {
     (JsPath \ "username").read[String] and
     (JsPath \ "fullname").read[String] and
     (JsPath \ "email").read[String](email) and
-    (JsPath \ "password" ).read[String]
+    (JsPath \ "password" ).read[String] and
+    (JsPath \ "token").readNullable[String]
   )(User.apply _)
 
   implicit val userWrites = new Writes[User] {
@@ -29,7 +31,8 @@ object User {
       "id" -> user.id,
       "username" -> user.username,
       "fullname" -> user.fullname,
-      "email"  -> user.email
+      "email"  -> user.email,
+      "token"  -> user.token
     )
   }
 }
@@ -40,6 +43,7 @@ class UserTable(tag: SlickTag) extends Table[User](tag, "users") {
   def fullname = column[String]("fullname")
   def email = column[String]("email")
   def password = column[String]("password")
+  def token = column[Option[String]]("token")
 
-  def * = (id, username, fullname, email, password) <> ((User.apply _).tupled, User.unapply _)
+  def * = (id, username, fullname, email, password, token) <> ((User.apply _).tupled, User.unapply _)
 }

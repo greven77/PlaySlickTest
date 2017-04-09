@@ -29,6 +29,28 @@ class AuthController(userDao: UserDao) extends Controller {
     )
   }
 
+  def login = Action.async(parse.json) { request =>
+    val userResult = request.body.validate[User]
+    userResult.fold(
+      valid = { u =>
+        val loggedUser = userDao.login(u)
+        loggedUser.map(lu =>
+          lu match {
+            case u: Some[User] => Ok(Json.toJson(u))
+            case None => Unauthorized
+          }
+        ).recoverWith {
+          case _ => Future { InternalServerError }
+        }
+      },
+      invalid = { errors =>
+        Future.successful(
+          BadRequest(JsError.toJson(errors))
+        )
+      }
+    )
+  }
+
   def show(id: Long) = Action.async(parse.json) { request =>
     userDao.findById(id).map(u => Ok(Json.toJson(u))).recoverWith {
       case _ => Future { NotFound }

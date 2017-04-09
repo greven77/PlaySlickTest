@@ -17,7 +17,8 @@ libraryDependencies ++= Seq(
   "de.svenkubiak" % "jBCrypt" % "0.4.1",
   "com.softwaremill.macwire" %% "macros" % "2.2.2" % "provided",
   "com.softwaremill.macwire" %% "util" % "2.2.2",
-  "com.softwaremill.macwire" %% "proxy" % "2.2.2"
+  "com.softwaremill.macwire" %% "proxy" % "2.2.2",
+  "com.jason-goodwin" % "authentikat-jwt_2.11" % "0.4.5"
 )
 
 resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"

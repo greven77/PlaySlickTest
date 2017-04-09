@@ -13,7 +13,7 @@ import scala.util.Success
 
 import utils.{TaggedQuestion, SortingPaginationWrapper}
 
-class QuestionController(questionDao: QuestionDao) extends Controller {
+class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) extends Controller {
   // add pagination and sorting later
   import play.api.Logger
 
@@ -64,13 +64,15 @@ class QuestionController(questionDao: QuestionDao) extends Controller {
       }
   }
 
-  def create = Action.async(parse.json) { request =>
+  def create = // Action.async(parse.json)
+    auth.JWTAuthentication.async(parse.json) { request =>
     val questionResult = request.body.validate[TaggedQuestion]
 
     questionResult.fold(
       valid = {q =>
         val question = questionDao.addWithTags(q)
         question.map(q => Created(Json.toJson(q))).recoverWith {
+          case e => Future { BadRequest(s"create: ${e.getClass().getName()}")}
           case _ => Future { InternalServerError }
         }
       },

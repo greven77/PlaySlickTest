@@ -21,16 +21,16 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   val questionTags = TableQuery[TagsQuestionsTable]
   type AnswersQuery = Query[AnswerTable, Answer, Seq]
 
-  override def add(question: Question): Future[Question] =
+  def add(question: Question): Future[Option[Question]] =
     db.run(addQuestionQuery(question))
 
   def addWithTags(tq: TaggedQuestion): Future[TaggedQuestion] = {
-    val tags = getTagsQuestions(tq)
     for {
       question <- db.run(addQuestionQuery(tq.question))
-      tags <- db.run(insertTagsQuery(tags)) if !tq.tagIds.isEmpty
-      taggedQuestionIds <- db.run(getTagsIdsQuery(question.id)) if !tq.tagIds.isEmpty
-    } yield TaggedQuestion(question, Some(taggedQuestionIds))
+      tagsQuestions <- Future { getTagsQuestions(question.get.id, tq.tagIds) }
+      tags <- db.run(insertTagsQuery(tagsQuestions))
+      taggedQuestionIds <- db.run(getTagsIdsQuery(question.get.id))
+    } yield TaggedQuestion(question.get, Some(taggedQuestionIds))
   }
 
   def update(tq: TaggedQuestion): Future[Option[TaggedQuestion]] = {
@@ -44,7 +44,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
       findByIdQuery(id.get)
     )
 
-    val updatedTagsQuery = insertOrUpdateTagsQuery(getTagsQuestions(tq))
+    val updatedTagsQuery = insertOrUpdateTagsQuery(getTagsQuestions(tq.question.id, tq.tagIds))
 
     for {
       question <- db.run(updateQuestion)
@@ -74,7 +74,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   import org.joda.time.DateTime
 
-  override def findAll(settings: SortingPaginationWrapper): Future[Seq[Question]] =
+  def findAll(settings: SortingPaginationWrapper): Future[Seq[Question]] =
     db.run(questions.
       sortBy(_.title.desc).
       result)
@@ -120,11 +120,9 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   private def insertOrUpdateTagsQuery(updatedTags: Seq[TagsQuestions]) =
     DBIO.sequence(updatedTags.map(questionTags.insertOrUpdate(_)))
 
-  private def getTagsQuestions(tq: TaggedQuestion): Seq[TagsQuestions] = {
-    val question = tq.question
-    val tagIds = tq.tagIds
-    val question_id = question.id.get
-    tagIds.get.map(TagsQuestions(_, question_id))
+  private def getTagsQuestions(question_id: Option[Long], tagIds: Option[Seq[Long]]): Seq[TagsQuestions] = {
+    val qId = question_id.get
+    tagIds.getOrElse(Seq[Long]()).map(TagsQuestions(_, qId))
   }
   private def getTagsIdsQuery(id: Option[Long]) = {
     questionTags.filter(_.question_id === id).map(_.tag_id).result
@@ -165,11 +163,13 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   private def findByIdQuery(id: Long) =
     questions.filter(_.id === id).result.headOption
+  private def findByTitleQuery(title: String) =
+    questions.filter(_.title === title).result.headOption
   private def findFQ(id: Long, user_id: Long) =
     favouriteQuestions.filter(fq => fq.question_id === id && fq.user_id === user_id)
 
   private def addQuestionQuery(question: Question) =
-    questionsReturningRow += question
+    (questionsReturningRow += question) andThen (findByTitleQuery(question.title))
   private def questionsReturningRow =
     questions returning questions.map(_.id) into { (q, id) =>
       q.copy(id = id)
