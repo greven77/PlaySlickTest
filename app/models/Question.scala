@@ -8,30 +8,23 @@ import slick.driver.MySQLDriver.api.{Tag => SlickTag}
 import slick.driver.MySQLDriver.api._
 
 case class Question(id: Option[Long], title: String, content: String,
-  created_by: Long, correct_answer: Option[Long],
+  created_by: Option[Long], correct_answer: Option[Long],
   created_at: Option[DateTime] = None, updated_at: Option[DateTime] = None)
 
 object Question {
-  implicit val format = Json.format[Question]
+//  implicit val format = Json.format[Question]
 
   implicit val questionReads: Reads[Question] = (
     (JsPath \ "id").readNullable[Long] and
     (JsPath \ "title").read[String] and
       (JsPath \ "content").read[String] and
-      (JsPath \ "created_by").read[Long] and
+      (JsPath \ "created_by").readNullable[Long] and
       (JsPath \ "correct_answer").readNullable[Long] and
       (JsPath \ "created_at").readNullable[DateTime] and
       (JsPath \ "updated_at").readNullable[DateTime]
   )(Question.apply _)
 
-  implicit val userWrites = new Writes[User] {
-    def writes(user: User) = Json.obj(
-      "id" -> user.id,
-      "username" -> user.username,
-      "fullname" -> user.fullname,
-      "email"  -> user.email
-    )
-  }
+  implicit val questionWrites = Json.writes[Question]
 }
 
 class QuestionTable(tag: SlickTag) extends Table[Question](tag, "questions") {
@@ -40,7 +33,7 @@ class QuestionTable(tag: SlickTag) extends Table[Question](tag, "questions") {
   def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
   def title = column[String]("title")
   def content = column[String]("content")
-  def created_by = column[Long]("created_by")
+  def created_by = column[Option[Long]]("created_by")
   def correct_answer = column[Option[Long]]("correct_answer")
   def created_at = column[Option[DateTime]]("created_at")
   def updated_at = column[Option[DateTime]]("updated_at")

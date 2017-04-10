@@ -4,7 +4,7 @@
 GET     /                           controllers.MainController.index
 POST     /register                  controllers.AuthController.register
 #POST    /login                     controllers.AuthController.login
-#GET     /logout                    controllers.AuthController.logout
+#PUT     /logout                    controllers.AuthController.logout
 
 # tags
 GET      /api/tags                  controllers.TagController.index
@@ -20,8 +20,11 @@ GET    /api/questions/tagged/:tag         controllers.QuestionController.tagged(
 GET    /api/questions/:id                 controllers.QuestionController.show(id: Long)
 GET    /api/questions/:id/thread          controllers.QuestionController.showThread(id: Long)
 POST   /api/questions                     controllers.QuestionController.create
+#must be thread owner
 PUT    /api/questions/:id                 controllers.QuestionController.update(id: Long)
+#must be thread owner
 PUT    /api/questions/:id/correctanswer   controllers.QuestionController.setCorrectAnswer(id: Long)
+#must be thread owner
 DELETE /api/questions/:id                 controllers.QuestionController.destroy(id: Long)
 
 POST   /api/questions/:id/markfavourite   controllers.QuestionController.markFavourite(id: Long)
@@ -29,9 +32,12 @@ DELETE /api/questions/:id/removefavourite controllers.QuestionController.removeF
 
 # answers, answer comments and voting
 POST   /api/questions/:qId/answer         controllers.AnswerController.create(qId:Long)
+#must be answer owner
 PUT    /api/questions/:qId/answer/:id     controllers.AnswerController.update(qId: Long, id: Long)
+#must be answer owner or question owner
 DELETE /api/questions/:qId/answer/:id     controllers.AnswerController.destroy(qId: Long, id: Long)
 
+#must be other than answer owner
 POST   /api/answer/:id/vote             controllers.AnswerController.vote(id: Long)
 
 

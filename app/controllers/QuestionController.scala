@@ -1,6 +1,7 @@
 package controllers
 
 import dao.QuestionDao
+import javax.naming.AuthenticationException
 import models.{Question, FavouriteQuestion}
 import java.sql._
 import play.api.libs.json._
@@ -64,15 +65,14 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
       }
   }
 
-  def create = // Action.async(parse.json)
-    auth.JWTAuthentication.async(parse.json) { request =>
+  def create = auth.JWTAuthentication.async(parse.json) { request =>
     val questionResult = request.body.validate[TaggedQuestion]
 
     questionResult.fold(
       valid = {q =>
         val question = questionDao.addWithTags(q)
         question.map(q => Created(Json.toJson(q))).recoverWith {
-          case e => Future { BadRequest(s"create: ${e.getClass().getName()}")}
+          case e: Exception => Future { BadRequest(s"create: ${e.getClass().getName()}")}
           case _ => Future { InternalServerError }
         }
       },
@@ -85,17 +85,20 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
   }
   // TODO: add business rules
   // add update tags feature
-  def update(id: Long) = Action.async(parse.json) { request =>
+  def update(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     // add validation
     val questionResult = request.body.validate[TaggedQuestion]
+    // set questionResult as invalid if user_id is not the owner
+    val user = request.user
 
     questionResult.fold(
-      valid = { q =>
-        questionDao.update(q).
+      valid = { tq =>
+        questionDao.update(tq, user).
           map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
           recoverWith {
+            case authEx: AuthenticationException => Future { Unauthorized }
             case e: SQLIntegrityConstraintViolationException  =>
-              Future { NotFound("invalid id or id not provided")}
+              Future { NotFound("invalid id or id not provided or title is not unique")}
             case _ => Future { InternalServerError }
           }
       },
@@ -109,7 +112,7 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
   }
 
   // TODO: add business rules
-  def setCorrectAnswer(id: Long) = Action.async(parse.json) { request =>
+  def setCorrectAnswer(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     (request.body \ "answer_id").validate[Long] match {
       case a: JsSuccess[Long] => {
         val answer_id = Some(a.get)
@@ -126,7 +129,7 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
   }
 
   // TODO: add business rules
-  def destroy(id: Long) = Action.async(parse.json) { request =>
+  def destroy(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     questionDao.remove(id).map(question => NoContent).
       recoverWith {
         case _ => Future { NotFound }
@@ -134,7 +137,7 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
   }
 
   // TODO: add business rules
-  def markFavourite(id: Long) = Action.async(parse.json) { request =>
+  def markFavourite(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     val fqResult = request.body.validate[FavouriteQuestion]
 
     fqResult.fold(
@@ -154,7 +157,7 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
   }
 
   // TODO: add business rules
-  def removeFavourite(id: Long) = Action.async(parse.json) { request =>
+  def removeFavourite(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     val fqResult = request.body.validate[FavouriteQuestion]
 
     fqResult.fold(

@@ -23,6 +23,9 @@ class AnswerDao(dbConfig: DatabaseConfig[JdbcProfile]) {
     )
   }
 
+  def findById(id: Long): Future[Option[Answer]] =
+    db.run(answers.filter(_.id === id).result.headOption)
+
   def remove(id: Long): Future[Int] =
     db.run(answers.filter(_.id === id).delete)
 

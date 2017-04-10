@@ -1,5 +1,6 @@
 package dao
 
+import javax.naming.AuthenticationException
 import models._
 import slick.backend.DatabaseConfig
 import slick.driver.JdbcProfile
@@ -33,7 +34,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     } yield TaggedQuestion(question.get, Some(taggedQuestionIds))
   }
 
-  def update(tq: TaggedQuestion): Future[Option[TaggedQuestion]] = {
+  def update(tq: TaggedQuestion, user: User): Future[Option[TaggedQuestion]] = {
     val id = tq.question.id
     val title = tq.question.title
     val content = tq.question.content
