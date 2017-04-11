@@ -1,11 +1,13 @@
 package models
 
 import org.joda.time.DateTime
+import org.joda.time.format.DateTimeFormat
 import play.api.libs.json._
 import play.api.libs.json.Reads
 import play.api.libs.functional.syntax._
 import slick.driver.MySQLDriver.api.{Tag => SlickTag}
 import slick.driver.MySQLDriver.api._
+import com.github.tototoshi.slick.MySQLJodaSupport._
 
 case class Question(id: Option[Long], title: String, content: String,
   created_by: Option[Long], correct_answer: Option[Long],
@@ -28,14 +30,15 @@ object Question {
 }
 
 class QuestionTable(tag: SlickTag) extends Table[Question](tag, "questions") {
-  import utils.CustomColumnTypes._
+//  import utils.CustomColumnTypes._
+//  val dtf = DateTimeFormat.forPattern("yyyy-MM-dd hh:mm:ss")
 
   def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
   def title = column[String]("title")
   def content = column[String]("content")
   def created_by = column[Option[Long]]("created_by")
   def correct_answer = column[Option[Long]]("correct_answer")
-  def created_at = column[Option[DateTime]]("created_at")
+  def created_at = column[Option[DateTime]]("created_at", O.Default(Some(new DateTime)))
   def updated_at = column[Option[DateTime]]("updated_at")
 
   def * = (id, title, content, created_by, correct_answer,

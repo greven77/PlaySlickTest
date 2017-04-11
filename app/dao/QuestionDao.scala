@@ -1,5 +1,6 @@
 package dao
 
+import java.sql.SQLIntegrityConstraintViolationException
 import javax.naming.AuthenticationException
 import models._
 import slick.backend.DatabaseConfig
@@ -55,8 +56,25 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   }
 
   def setCorrectAnswer(qId: Long, correct_answer_id: Option[Long]): Future[Option[Question]]  = {
+    // answer must be one of the answers present in current question thread
+    val filteringQuery = questions.filter(_.id === qId).
+      join(answers).on {
+        case (question, answer) => answer.question_id === question.id &&
+          answer.id === correct_answer_id
+      }.result
+
+    val validationQuery = filteringQuery.flatMap { q =>
+      q match {
+        case q +: Nil => DBIO.successful(q)
+        case _ => DBIO.failed(
+          new SQLIntegrityConstraintViolationException("Answer does not belong to question")
+        )
+      }
+    }
+
     val query = questions.filter(_.id === qId).map(_.correct_answer)
-    db.run(query.update(correct_answer_id)
+    db.run(validationQuery
+      andThen query.update(correct_answer_id)
       andThen findByIdQuery(qId))
   }
 

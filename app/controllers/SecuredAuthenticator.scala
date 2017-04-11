@@ -12,7 +12,8 @@ import models.User
 import utils.UserPayloadWrapper
 import dao.{AnswerDao, QuestionDao, UserDao}
 
-case class UserRequest[A](val user: User, val request: Request[A]) extends WrappedRequest[A](request)
+case class UserRequest[A](val user: User, val request: Request[A])
+    extends WrappedRequest[A](request)
 
 class SecuredAuthenticator(userDao: UserDao, questionDao: QuestionDao,
   answerDao: AnswerDao) extends Controller {
@@ -29,49 +30,77 @@ class SecuredAuthenticator(userDao: UserDao, questionDao: QuestionDao,
          } { payload =>
            val userCredentials = Json.parse(payload).validate[UserPayloadWrapper].get
 
-           val user: Future[Option[User]] = userDao.findByEmail(userCredentials.email).
+           val userF: Future[Option[User]] = userDao.findByEmail(userCredentials.email).
              map(identity)
              .recoverWith {
              case _ => Future { None }
              }
 
-           val requestObj = request.toString.split(" ")
+           for {
+             user <- userF
+             isAccessGranted <- checkAuthorized(request.toString, user.get)
+             block <- decide(isAccessGranted, user, request, block)
+           } yield block
 
-           // val reg = "/api/questions/([0-9]+)/answer/([0-9]+)".r
-//           reg.findAllIn("/api/questions/71/answer/10").matchData.foreach { m => println(m.group) }
-//group   groupCount   groupNames
-
-//           reg.findAllIn("/api/questions/71/answer/10").matchData.foreach { m => println(m.groupCount) }
-
-           user.flatMap(usr => block(UserRequest(usr.get, request)))
+           //userF.flatMap(usr => block(UserRequest(usr.get, request)))
          }
        } else {
          Future.successful(Unauthorized("Invalid credential 2"))
        }
     }
 
-    def isAuthorized(route: List[String], user:User, question_id: Long = -1,
-      answer_id: Long = -1): Future[Boolean] = route match {
-      case List("PUT", url) if url.matches("/api/questions/[0-9]+") =>
-        isQuestionOwner(user, question_id)
-      case List("PUT", url) if url.matches("/api/questions/[0-9]+/correctanswer") =>
-        isQuestionOwner(user, question_id)
-      case List("DELETE", url) if url.matches("/api/questions/[0-9]+") =>
-        isQuestionOwner(user, question_id)
-      case List("PUT",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
-        isAnswerOwner(user, answer_id)
-      case List("DELETE",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
+    def decide[A](isAccessGranted: Boolean, user: Option[User],
+      request: Request[A], block: (UserRequest[A]) => Future[Result]): Future[Result] =
+      if (isAccessGranted)
+        block(UserRequest(user.get, request))
+      else
+        Future.successful(Unauthorized)
+
+    def checkAuthorized(requestString: String, user: User): Future[Boolean] = {
+      val requestItems = requestString.split(" ")
+      val Array(verb, url) = requestItems
+
+//      val reg = """(\/api\/[a-z]+)\/(\d+).*?(\/([a-z]+)\/(\d+))?$""".r
+      val reg = """(\/api\/[a-z]+)[\/]?(\d*).*?(\/([a-z]+)\/(\d+))?$""".r
+
+      val groupsList =
+        reg.findFirstMatchIn(url).get.subgroups.filter { group =>
+          group != null && group != ""
+        }
+
+      groupsList match {
+        case (List(_, id)) =>
+          isAuthorized(requestItems, user,  id.toLong)
+        case List(_, id, _, _, child_id) =>
+          isAuthorized(requestItems, user, id.toLong, child_id.toLong)
+
+        case _ => Future { true }
+      }
+    }
+
+    def isAuthorized(route: Array[String], user:User, parent_id: Long = -1,
+      child_id: Long = -1): Future[Boolean] = route match {
+      case Array("PUT", url) if url.matches("/api/questions/[0-9]+") =>
+        isQuestionOwner(user, parent_id)
+      case Array("PUT", url) if url.matches("/api/questions/[0-9]+/correctanswer") =>
+        isQuestionOwner(user, parent_id)
+      case Array("DELETE", url) if url.matches("/api/questions/[0-9]+") =>
+        isQuestionOwner(user, parent_id)
+      case Array("PUT",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
+        isAnswerOwner(user, parent_id)
+      case Array("DELETE",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
         for {
-          answerOwner <- isAnswerOwner(user, answer_id)
-          questionOwner <- isQuestionOwner(user, question_id)
+          answerOwner <- isAnswerOwner(user, child_id)
+          questionOwner <- isQuestionOwner(user, parent_id)
         } yield answerOwner || questionOwner
-      case List("POST", url) if url.matches("/api/answer/[0-9]+/vote") =>
-        isAnswerOwner(user, answer_id).map(!_)
+      case Array("POST", url) if url.matches("/api/answer/[0-9]+/vote") =>
+        isAnswerOwner(user, parent_id).map(!_)
       case _ => Future { false }
     }
 
     def isQuestionOwner(user: User, id: Long): Future[Boolean] =
-      questionDao.findById(id).map(q => q.get.created_by == user.id).recoverWith {
+      questionDao.findById(id).map(q => {
+        q.get.created_by == user.id}).recoverWith {
         case _ => Future { false }
       }
     def isAnswerOwner(user: User, id: Long): Future[Boolean] =

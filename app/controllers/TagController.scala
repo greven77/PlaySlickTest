@@ -8,7 +8,7 @@ import play.api.mvc.{Action, Controller}
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class TagController(tagDao: TagDao) extends Controller {
+class TagController(tagDao: TagDao, auth: SecuredAuthenticator) extends Controller {
 
   def index = Action.async { request =>
     tagDao.findAll().map { tags =>
@@ -16,7 +16,7 @@ class TagController(tagDao: TagDao) extends Controller {
     }
   }
 
-  def create = Action.async(parse.json) { request =>
+  def create = auth.JWTAuthentication.async(parse.json) { request =>
     val tagResult = request.body.validate[Tag]
     tagResult.fold(
       valid = { t =>
@@ -33,7 +33,7 @@ class TagController(tagDao: TagDao) extends Controller {
     )
   }
 
-  def destroy(id: Long) = Action.async { request =>
+  def destroy(id: Long) = auth.JWTAuthentication.async { request =>
     tagDao.remove(id).map(tag => Ok(s"Tag with id: ${id} removed")).recoverWith {
       case _ => Future { NotFound }
     }

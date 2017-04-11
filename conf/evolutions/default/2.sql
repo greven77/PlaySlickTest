@@ -12,7 +12,7 @@ CREATE TABLE questions(
     content TEXT NOT NULL,
     created_by bigint(20) NOT NULL,
     correct_answer bigint(20),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT creator_fk FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
     PRIMARY KEY(id)

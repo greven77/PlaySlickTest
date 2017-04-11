@@ -69,8 +69,10 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
     val questionResult = request.body.validate[TaggedQuestion]
 
     questionResult.fold(
-      valid = {q =>
-        val question = questionDao.addWithTags(q)
+      valid = {tq =>
+        val questionWithUser = tq.question.copy(created_by = request.user.id)
+        val taggedQuestionWithUser: TaggedQuestion = tq.copy(question = questionWithUser)
+        val question = questionDao.addWithTags(taggedQuestionWithUser)
         question.map(q => Created(Json.toJson(q))).recoverWith {
           case e: Exception => Future { BadRequest(s"create: ${e.getClass().getName()}")}
           case _ => Future { InternalServerError }
@@ -93,7 +95,9 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
 
     questionResult.fold(
       valid = { tq =>
-        questionDao.update(tq, user).
+        val questionWithId = tq.question.copy(id = Some(id))
+        val taggedQuestion = tq.copy(question = questionWithId)
+        questionDao.update(taggedQuestion, user).
           map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
           recoverWith {
             case authEx: AuthenticationException => Future { Unauthorized }
@@ -119,6 +123,8 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
         questionDao.setCorrectAnswer(id, answer_id).
           map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
           recoverWith {
+            case e: SQLIntegrityConstraintViolationException =>
+              Future { NotFound(s"${e.getMessage()}")}
             case _ => Future { InternalServerError }
           }
       }
@@ -142,7 +148,8 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
 
     fqResult.fold(
       valid = { fq =>
-        val favouritedQuestion = questionDao.markFavourite(fq)
+        val fqWithId = fq.copy(question_id = id)
+        val favouritedQuestion = questionDao.markFavourite(fqWithId)
         favouritedQuestion.map(f => Created(Json.toJson(f))).recoverWith {
           case _ => Future { InternalServerError }
         }
@@ -162,7 +169,8 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
 
     fqResult.fold(
       valid = { fq =>
-        questionDao.removeFavourite(fq).map(favourite =>
+        val fqWithId = fq.copy(question_id = id)
+        questionDao.removeFavourite(fqWithId).map(favourite =>
           favourite match {
             case 1 => Ok(s"Tag with id: ${fq.question_id} removed")
             case 0 => NotFound

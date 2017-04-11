@@ -8,15 +8,15 @@ import play.api.libs.functional.syntax._
 import slick.driver.MySQLDriver.api.{Tag => SlickTag}
 import slick.driver.MySQLDriver.api._
 
-case class Vote(answer_id: Long, user_id: Long, value: Int)
+case class Vote(answer_id: Option[Long], user_id: Option[Long], value: Int)
 
 object Vote {
   val userValidate = Reads.IntReads.
     filter(ValidationError("Value must be -1 or 1"))(validValue(_))
 
   implicit val voteReads: Reads[Vote] = (
-    (JsPath \ "answer_id").read[Long] and
-    (JsPath \ "user_id").read[Long] and
+    (JsPath \ "answer_id").readNullable[Long] and
+    (JsPath \ "user_id").readNullable[Long] and
     (JsPath \ "value").read[Int](userValidate)
   )(Vote.apply _)
 
@@ -26,8 +26,8 @@ object Vote {
 }
 
 class VoteTable(tag: SlickTag) extends Table[Vote](tag, "votes") {
-  def answer_id = column[Long]("answer_id")
-  def user_id = column[Long]("user_id")
+  def answer_id = column[Option[Long]]("answer_id")
+  def user_id = column[Option[Long]]("user_id")
   def value = column[Int]("vote_value")
 
   def pk = primaryKey("vote_pk", (answer_id, user_id))

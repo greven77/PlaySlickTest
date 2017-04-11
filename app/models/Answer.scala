@@ -6,7 +6,7 @@ import slick.driver.MySQLDriver.api.{Tag => SlickTag}
 import slick.driver.MySQLDriver.api._
 
 case class Answer(id: Option[Long], content: String,
-  user_id: Long , question_id: Long,
+  user_id: Option[Long] , question_id: Long,
   created_at: Option[DateTime] = None, updated_at: Option[DateTime] = None
 )
 
@@ -19,7 +19,7 @@ class AnswerTable(tag: SlickTag) extends Table[Answer](tag, "answers") {
 
   def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
   def content = column[String]("content")
-  def user_id = column[Long]("user_id")
+  def user_id = column[Option[Long]]("user_id")
   def question_id = column[Long]("question_id")
   def created_at = column[Option[DateTime]]("created_at")
   def updated_at = column[Option[DateTime]]("updated_at")
