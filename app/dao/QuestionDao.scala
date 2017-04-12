@@ -58,7 +58,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   }
 
   def setCorrectAnswer(qId: Long, correct_answer_id: Option[Long]): Future[Option[Question]]  = {
-    // answer must be one of the answers present in current question thread
+    
     val filteringQuery = questions.filter(_.id === qId).
       join(answers).on {
         case (question, answer) => answer.question_id === question.id &&
@@ -94,34 +94,43 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     db.run(findFQ(fq.question_id, fq.user_id).delete)
 
   def findAll(params: SortingPaginationWrapper): Future[Seq[QuestionFavouriteWrapper]] = {
-
-    // val qr = for {
-    //   (question, sub) <- questions
-    //   .joinLeft(answers).on { case (question, answer) =>
-    //       question.id === answer.question_id
-    //   }.joinLeft(favouriteQuestions).on { case ((question, _), favouriteQuestion) =>
-    //       question.id === favouriteQuestion.question_id
-    //   }.groupBy { case ((question, _), _) =>
-    //       question
-    //   }
-    // } yield (question, sub.map(_._1._2).map(_.map(_.id)).countDistinct, sub.map(_._2)
-    //   .map(_.map(_.user_id)).countDistinct)
-
-    // val sortPaginateQr = qr.sortBy(sorter(_, params)).
-    //   drop(getPage(params.page, params.resultsPerPage)).
-    //   take(params.resultsPerPage)
-
-    // db.run(sortPaginateQr.result.
-    //   map { case q =>
-    //   q.map { case ((question, answer, fq)) =>
-    //     QuestionFavouriteWrapper(question, fq, answer)
-    //   }
-    //   })
-
     sortedAndPaginatedQuestions(params, questions)
   }
 
-  def sortedAndPaginatedQuestions(params: SortingPaginationWrapper,
+  override def findById(id: Long): Future[Option[Question]] =
+    db.run(findByIdQuery(id))
+
+  def findByTag(tag: String, params: SortingPaginationWrapper):
+      Future[Seq[QuestionFavouriteWrapper]] = {
+    val query  = questions.
+      join(questionTags).on(_.id === _.question_id).
+      join(tags.filter(_.text === tag)).on {
+        case ((question, questionTag), tag) =>
+          questionTag.tag_id === tag.id
+      }.map {
+        case ((question, _), _) =>
+          question
+      }
+
+    sortedAndPaginatedQuestions(params,query)
+  }
+
+  def findAndRetrieveThread(id: Long, logged_user_id: Option[Long] = None,
+    params: SortingPaginationWrapper): Future[QuestionThread] = {
+    val filteredAnswers = answers.filter(_.question_id === id)
+
+    for {
+      votesMap <- db.run(answerVotesQuery(filteredAnswers, logged_user_id))
+      question <- db.run(findByIdQuery(id))
+      tags     <- db.run(getTagsQuery(id))
+      answers  <- db.run(answerUsersQuery(votesMap, filteredAnswers, params))
+    } yield QuestionThread(question, tags, answers)
+  }
+
+  override def remove(id: Long): Future[Int] =
+    db.run(questions.filter(_.id === id).delete)
+
+  private def sortedAndPaginatedQuestions(params: SortingPaginationWrapper,
     questions: Query[models.QuestionTable,models.Question,Seq]) = {
         val qr = for {
       (question, sub) <- questions
@@ -149,79 +158,47 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     db.run(action)
   }
 
-  override def findById(id: Long): Future[Option[Question]] =
-    db.run(findByIdQuery(id))
-
-  def findByTag(tag: String, params: SortingPaginationWrapper):
-      Future[Seq[QuestionFavouriteWrapper]]
-  = {
-    val query  = questions.
-      join(questionTags).on(_.id === _.question_id).
-      join(tags.filter(_.text === tag)).on {
-        case ((question, questionTag), tag) =>
-          questionTag.tag_id === tag.id
-      }.map {
-        case ((question, _), _) =>
-          question
-      }
-
-    sortedAndPaginatedQuestions(params,query)
-  }
-
-  def oldFindByTag(tag: String): Future[Seq[Question]] = {
-    val findQuestionsQuery = tags.filter(_.text === tag).
-      join(questionTags).on(_.id === _.tag_id).
-      join(questions).on {
-        case ((tag, questionTag), question) => questionTag.question_id === question.id
-      }.result
-
-    val action = for {
-      questionsResult <- findQuestionsQuery
-    } yield {
-      questionsResult.map {
-          case ((tag, questionTag), question) => question
-      }
-    }
-    db.run(action)
-  }
-
-  def findAndRetrieveThread(id: Long, logged_user_id: Option[Long] = None): Future[QuestionThread] = {
-    val filteredAnswers = answers.filter(_.question_id === id)
-
-    for {
-      votesMap <- db.run(answerVotesQuery(filteredAnswers, logged_user_id))
-      question <- db.run(findByIdQuery(id))
-      tags     <- db.run(getTagsQuery(id))
-      answers  <- db.run(answerUsersQuery(votesMap, filteredAnswers))
-    } yield QuestionThread(question, tags, answers)
-  }
-
-  override def remove(id: Long): Future[Int] =
-    db.run(questions.filter(_.id === id).delete)
-
   private def sorter (qfcount: (QuestionTable, Rep[Int], Rep[Int]), settings: SortingPaginationWrapper) =
   {
-    import play.api.Logger
-    Logger.debug(s"settings: ${settings}")
     val (question, answerCount, favouriteCount) = qfcount
     settings match {
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "title" && direction == "desc" => question.title.desc
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "title" && direction == "asc" => question.title.asc
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "date" && direction == "desc" => question.created_at.desc
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "date" && direction == "asc" => question.created_at.asc
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "favouritecount" && direction == "asc" => favouriteCount.asc
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "favouritecount" && direction == "desc" => favouriteCount.desc
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "answercount" && direction == "asc" => answerCount.asc
-    case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "answercount" && direction == "desc" => answerCount.desc
-    case SortingPaginationWrapper(_,_,_,_) => question.created_at.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "title" && direction == "desc" => question.title.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "title" && direction == "asc" => question.title.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "date" && direction == "desc" => question.created_at.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "date" && direction == "asc" => question.created_at.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "favouritecount" && direction == "asc" => favouriteCount.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "favouritecount" && direction == "desc" => favouriteCount.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "answercount" && direction == "asc" => answerCount.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "answercount" && direction == "desc" => answerCount.desc
+      case SortingPaginationWrapper(_,_,_,_) => question.created_at.desc
+    }
+  }
+
+    private def answerSorter (qfcount: (AnswerTable, Rep[Int]), settings: SortingPaginationWrapper) =
+  {
+    val (question, voteCount) = qfcount
+    settings match {
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "created_at" && direction == "desc" => question.created_at.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "created_at" && direction == "asc" => question.created_at.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "updated_at" && direction == "desc" => question.updated_at.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "updated_at" && direction == "asc" => question.updated_at.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "votecount" && direction == "asc" => voteCount.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "votecount" && direction == "desc" => voteCount.desc
+      case SortingPaginationWrapper(_,_,_,_) => question.created_at.desc
     }
   }
 
@@ -263,10 +240,12 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
       }
   }
 
-  private def answerUsersQuery(votesMap: Map[Long, (Int, Int)], answers: AnswersQuery) = {
+  private def answerUsersQuery(votesMap: Map[Long, (Int, Int)], answers: AnswersQuery,
+  params: SortingPaginationWrapper) = {
     answers.
       join(questions).on(_.question_id  === _.id).
       join(users).on { case ((answer, question), user) => question.created_by === user.id }.
+    //  sortBy(_.user.id). // answerSorter (qfcount: (AnswerTable, Rep[Int]), settings: SortingPaginationWrapper)
       result.
       map { rows =>
         rows.map { case ((answer, question), user) =>

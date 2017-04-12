@@ -16,6 +16,9 @@ object SortingPaginationWrapper {
   val sortValidate = Reads.StringReads.
     filter(ValidationError("invalid parameter"))(sortByValidator(_))
 
+  val sortValidateAnswers = Reads.StringReads.
+    filter(ValidationError("invalid parameter"))(sortByValidator)
+
   val directionValidate = Reads.StringReads.
     filter(ValidationError("invalid parameter"))(directionValidator(_))
 
@@ -26,8 +29,20 @@ object SortingPaginationWrapper {
     ((JsPath \ "direction").read[String](directionValidate) orElse Reads.pure("desc"))
   )(SortingPaginationWrapper.apply _)
 
-  def sortByValidator(param: String) =
-    List("date", "votecount", "title", "answercount", "favouritecount").contains(param.toLowerCase)
+  val sortingPaginationAnswerReads: Reads[SortingPaginationWrapper] = (
+    ((JsPath \ "sort_by").read[String](sortValidateAnswers) orElse Reads.pure("created_at")) and
+    ((JsPath \ "page").read[Int] orElse Reads.pure(1)) and
+    ((JsPath \ "resultsPerPage").read[Int] orElse Reads.pure(25)) and
+    ((JsPath \ "direction").read[String](directionValidate) orElse Reads.pure("desc"))
+  )(SortingPaginationWrapper.apply _)
+
+
+  def sortByValidator(criteria: String) =
+    List("date", "votecount", "title", "answercount", "favouritecount")
+      .contains(criteria.toLowerCase)
+
+  def sortByValidatorAnswers(criteria: String) =
+    List("created_at", "updated_at", "voteCount").contains(criteria.toLowerCase)
 
   def directionValidator(param: String) =
     List("asc", "desc").contains(param.toLowerCase)

@@ -69,12 +69,25 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
     }
   }
 
-  // shows question with answers included
-  def showThread(id: Long) = Action.async { request =>
-    questionDao.findAndRetrieveThread(id).map(qt => Ok(Json.toJson(qt))).
-      recoverWith {
-        case _ => Future { NotFound }
+  def showThread(id: Long) = Action.async(parse.json) { request =>
+    val answerReads = SortingPaginationWrapper.sortingPaginationAnswerReads
+    val result = request.body.validate[SortingPaginationWrapper](answerReads)
+
+    result.fold(
+      valid = { spw =>
+        questionDao.findAndRetrieveThread(id, params = spw).map(qt => Ok(Json.toJson(qt))).
+          recoverWith {
+            case e: SQLIntegrityConstraintViolationException => Future { NotFound }
+            case _ => Future { InternalServerError}
+          }
+      },
+      invalid = { errors =>
+        Future.successful(
+          BadRequest(JsError.toJson(errors))
+        )
       }
+    )
+
   }
 
   def create = auth.JWTAuthentication.async(parse.json) { request =>
@@ -97,12 +110,10 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
       }
     )
   }
-  // TODO: add business rules
-  // add update tags feature
+
   def update(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
-    // add validation
     val questionResult = request.body.validate[TaggedQuestion]
-    // set questionResult as invalid if user_id is not the owner
+
     val user = request.user
 
     questionResult.fold(
@@ -127,7 +138,6 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
 
   }
 
-  // TODO: add business rules
   def setCorrectAnswer(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     (request.body \ "answer_id").validate[Long] match {
       case a: JsSuccess[Long] => {
@@ -143,10 +153,8 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
 
       case e: JsError => Future { BadRequest }
     }
-    //val question_id = (request.body \ "id").as[Long]
   }
 
-  // TODO: add business rules
   def destroy(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     questionDao.remove(id).map(question => NoContent).
       recoverWith {
@@ -154,7 +162,6 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
       }
   }
 
-  // TODO: add business rules
   def markFavourite(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     val fqResult = request.body.validate[FavouriteQuestion]
 
@@ -175,7 +182,6 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
 
   }
 
-  // TODO: add business rules
   def removeFavourite(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     val fqResult = request.body.validate[FavouriteQuestion]
 
