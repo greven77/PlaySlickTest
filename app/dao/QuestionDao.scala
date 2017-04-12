@@ -95,28 +95,30 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   def findAll(params: SortingPaginationWrapper): Future[Seq[QuestionFavouriteWrapper]] = {
 
-    val qr = for {
-      (question, sub) <- questions
-      .joinLeft(answers).on { case (question, answer) =>
-          question.id === answer.question_id
-      }.joinLeft(favouriteQuestions).on { case ((question, _), favouriteQuestion) =>
-          question.id === favouriteQuestion.question_id
-      }.groupBy { case ((question, _), _) =>
-          question
-      }
-    } yield (question, sub.map(_._1._2).map(_.map(_.id)).countDistinct, sub.map(_._2)
-      .map(_.map(_.user_id)).countDistinct)
+    // val qr = for {
+    //   (question, sub) <- questions
+    //   .joinLeft(answers).on { case (question, answer) =>
+    //       question.id === answer.question_id
+    //   }.joinLeft(favouriteQuestions).on { case ((question, _), favouriteQuestion) =>
+    //       question.id === favouriteQuestion.question_id
+    //   }.groupBy { case ((question, _), _) =>
+    //       question
+    //   }
+    // } yield (question, sub.map(_._1._2).map(_.map(_.id)).countDistinct, sub.map(_._2)
+    //   .map(_.map(_.user_id)).countDistinct)
 
-    val sortPaginateQr = qr.sortBy(sorter(_, params)).
-      drop(getPage(params.page, params.resultsPerPage)).
-      take(params.resultsPerPage)
+    // val sortPaginateQr = qr.sortBy(sorter(_, params)).
+    //   drop(getPage(params.page, params.resultsPerPage)).
+    //   take(params.resultsPerPage)
 
-    db.run(sortPaginateQr.result.
-      map { case q =>
-      q.map { case ((question, answer, fq)) =>
-        QuestionFavouriteWrapper(question, fq, answer)
-      }
-    })
+    // db.run(sortPaginateQr.result.
+    //   map { case q =>
+    //   q.map { case ((question, answer, fq)) =>
+    //     QuestionFavouriteWrapper(question, fq, answer)
+    //   }
+    //   })
+
+    sortedAndPaginatedQuestions(params, questions)
   }
 
   def sortedAndPaginatedQuestions(params: SortingPaginationWrapper,
@@ -139,9 +141,9 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
     val action = sortPaginateQr.result.
       map { case q =>
-      q.map { case ((question, answer, fq)) =>
-        QuestionFavouriteWrapper(question, fq, answer)
-      }
+        q.map { case ((question, answer, fq)) =>
+          QuestionFavouriteWrapper(question, fq, answer)
+        }
       }
 
     db.run(action)
@@ -199,6 +201,8 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   private def sorter (qfcount: (QuestionTable, Rep[Int], Rep[Int]), settings: SortingPaginationWrapper) =
   {
+    import play.api.Logger
+    Logger.debug(s"settings: ${settings}")
     val (question, answerCount, favouriteCount) = qfcount
     settings match {
     case SortingPaginationWrapper(sort_by,_,_,direction)
@@ -210,13 +214,14 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     case SortingPaginationWrapper(sort_by,_,_,direction)
         if sort_by == "date" && direction == "asc" => question.created_at.asc
     case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "favouriteCount" && direction == "asc" => favouriteCount.asc
+        if sort_by == "favouritecount" && direction == "asc" => favouriteCount.asc
     case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "favouriteCount" && direction == "desc" => favouriteCount.desc
+        if sort_by == "favouritecount" && direction == "desc" => favouriteCount.desc
     case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "answerCount" && direction == "asc" => answerCount.asc
+        if sort_by == "answercount" && direction == "asc" => answerCount.asc
     case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "answerCount" && direction == "desc" => answerCount.desc
+        if sort_by == "answercount" && direction == "desc" => answerCount.desc
+    case SortingPaginationWrapper(_,_,_,_) => question.created_at.desc
     }
   }
 
