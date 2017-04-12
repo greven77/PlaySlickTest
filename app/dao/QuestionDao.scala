@@ -96,74 +96,32 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   import org.joda.time.DateTime
 
-/*  def findAll(params: SortingPaginationWrapper):
+  def findAll(params: SortingPaginationWrapper):
       Future[Seq[QuestionFavouriteWrapper]] = {
 
-    /*    val query = questions.
-      sortBy(sorter(_, params)).
-      drop(getPage(params.page, params.resultsPerPage))
-      .take(params.resultsPerPage).
- result */
-    // val queryFavourites = questions.
-    //   join(favouriteQuestions).on(_.id === _.question_id).
-    //   groupBy { case (question, favouriteQuestion) => question }.
-    //   map { case (question, favouriteQuestions) =>
-    //     question -> favouriteQuestions.length
-    //   }// .
-    //   // sortBy(sorter(_, params)).
-    //   // drop(getPage(params.page, params.resultsPerPage))
-    //   // .take(params.resultsPerPage)
-    //   .result
+    val qr = for {
+      (question, sub) <- questions
+      .joinLeft(answers).on { case (question, answer) =>
+          question.id === answer.question_id
+      }.joinLeft(favouriteQuestions).on { case ((question, _), favouriteQuestion) =>
+          question.id === favouriteQuestion.question_id
+      }.groupBy { case ((question, _), _) =>
+          question
+      }
+    } yield (question, sub.map(_._1._2).map(_.map(_.id)).countDistinct, sub.map(_._2)
+      .map(_.map(_.user_id)).countDistinct)
 
-    val queryFavourites = favouriteQuestions.
-      groupBy(_.question_id).
-      map { case (questionId, favourites) => questionId -> favourites.length}.
-      result
+    val sortPaginateQr = qr.sortBy(sorter(_, params)).
+      drop(getPage(params.page, params.resultsPerPage)).
+      take(params.resultsPerPage)
 
-    // val qA = answers.
-    //   groupBy(_.question_id).
-    //   map { case (questionId, answers) => questionId -> answers.length }.
-    //   result
-
-    val queryAnswers = questions.
-      joinLeft(answers).on(_.id === _.question_id).
-      joinLeft(favouriteQuestions).on {
-        case ((question, answer), fq) => question.id === fq.question_id}.
-      groupBy { case ((question, answer), fq) => question }.
-      map { case (question, sub) =>
-        question -> sub._1.list.length// sub.map { case ((question, answer), fq) =>
-        //   answer.length
-        // }
-      }.
-      sortBy(sorter(_, params)).
-      drop(getPage(params.page, params.resultsPerPage))
-      .take(params.resultsPerPage)
-      .result
-
-    for {
-      qas <- db.run(queryAnswers)
-      qfs <- db.run(queryFavourites)
-    } yield qas.map { qa =>
-      val question: Question = qa._1
-      val question_id: Long = qa._1.id.get
-      val answersCount: Int = qa._2
-      Logger.debug(s"as: ${answersCount}")
-      val questionFavouritesMap: Map[Long, Int] = qfs.toMap
-      val favouritesCount: Int = questionFavouritesMap.get(question_id).getOrElse(0)
-      QuestionFavouriteWrapper(question, favouritesCount, answersCount)
-    }
-
-    // for {
-    //   queryFavouritesResult <- db.run(queryFavourites)
-    //   questionFavourites  <- Future { queryFavouritesResult }
-    //   queryAnswersResult <- db.run(queryAnswers)
-    //   questionAnswers    <- Future { queryAnswersResult }
-    //   mrs <- Future { merge(questionFavourites,questionAnswers) }
-    // } yield mrs.map { qf =>
-    //   QuestionFavouriteWrapper(qf._1, qf._2, qf._3)
-    // }
-    //db.run(query)
-  } */
+    db.run(sortPaginateQr.result.
+      map { case q =>
+      q.map { case ((question, answer, fq)) =>
+        QuestionFavouriteWrapper(question, fq, answer)
+      }
+    })
+  }
 
   def merge(t1: Seq[(Question, Int)], t2: Seq[(Question, Int)]): Seq[(Question, Int, Int)] = {
     val m1 = t1.toMap
@@ -207,9 +165,9 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   override def remove(id: Long): Future[Int] =
     db.run(questions.filter(_.id === id).delete)
 
-  private def sorter (qfcount: (QuestionTable, Rep[Int]), settings: SortingPaginationWrapper) =
+  private def sorter (qfcount: (QuestionTable, Rep[Int], Rep[Int]), settings: SortingPaginationWrapper) =
   {
-    val (question, favouriteCount) = qfcount
+    val (question, answerCount, favouriteCount) = qfcount
     settings match {
     case SortingPaginationWrapper(sort_by,_,_,direction)
         if sort_by == "title" && direction == "desc" => question.title.desc
@@ -222,7 +180,11 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     case SortingPaginationWrapper(sort_by,_,_,direction)
         if sort_by == "favouriteCount" && direction == "asc" => favouriteCount.asc
     case SortingPaginationWrapper(sort_by,_,_,direction)
-        if sort_by == "favouriteCount" && direction == "desc" => favouriteCount.asc
+        if sort_by == "favouriteCount" && direction == "desc" => favouriteCount.desc
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "answerCount" && direction == "asc" => answerCount.asc
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "answerCount" && direction == "desc" => answerCount.desc
     }
   }
 

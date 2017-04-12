@@ -27,7 +27,7 @@ object SortingPaginationWrapper {
   )(SortingPaginationWrapper.apply _)
 
   def sortByValidator(param: String) =
-    List("date", "votes", "title").contains(param.toLowerCase)
+    List("date", "voteCount", "title", "answerCount", "favouriteCount").contains(param.toLowerCase)
 
   def directionValidator(param: String) =
     List("asc", "desc").contains(param.toLowerCase)
