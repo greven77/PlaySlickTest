@@ -33,7 +33,7 @@ class QuestionTable(tag: SlickTag) extends Table[Question](tag, "questions") {
 //  import utils.CustomColumnTypes._
 //  val dtf = DateTimeFormat.forPattern("yyyy-MM-dd hh:mm:ss")
 
-  def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
+  def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
   def title = column[String]("title")
   def content = column[String]("content")
   def created_by = column[Option[Long]]("created_by")
@@ -41,7 +41,7 @@ class QuestionTable(tag: SlickTag) extends Table[Question](tag, "questions") {
   def created_at = column[Option[DateTime]]("created_at", O.Default(Some(new DateTime)))
   def updated_at = column[Option[DateTime]]("updated_at")
 
-  def * = (id, title, content, created_by, correct_answer,
+  def * = (id.?, title, content, created_by, correct_answer,
     created_at, updated_at) <> ((Question.apply _).tupled, Question.unapply)
 
   def creator = foreignKey("creator_fk", created_by, TableQuery[UserTable])(_.id.get)

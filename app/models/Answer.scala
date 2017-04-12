@@ -17,16 +17,16 @@ object Answer {
 class AnswerTable(tag: SlickTag) extends Table[Answer](tag, "answers") {
   import utils.CustomColumnTypes._
 
-  def id = column[Option[Long]]("id", O.PrimaryKey, O.AutoInc)
+  def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
   def content = column[String]("content")
   def user_id = column[Option[Long]]("user_id")
   def question_id = column[Long]("question_id")
   def created_at = column[Option[DateTime]]("created_at")
   def updated_at = column[Option[DateTime]]("updated_at")
 
-  def * = (id, content, user_id, question_id,
+  def * = (id.?, content, user_id, question_id,
     created_at, updated_at) <> ((Answer.apply _).tupled, Answer.unapply)
 
   def creator = foreignKey("creator_fk", user_id, TableQuery[UserTable])(_.id.get)
-  def question = foreignKey("parent_question_fk", question_id, TableQuery[QuestionTable])(_.id.get)
+  def question = foreignKey("parent_question_fk", question_id, TableQuery[QuestionTable])(_.id)
 }

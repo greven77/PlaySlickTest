@@ -23,9 +23,10 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
       request.body.validate[SortingPaginationWrapper]
     result.fold(
       valid = { r =>
-        questionDao.findAll(r).map { questions =>
+        Future{Ok}
+/*        questionDao.findAll(r).map { questions =>
           Ok(Json.toJson(questions))
-        }
+        }*/
       },
       invalid = { errors =>
         Future.successful(

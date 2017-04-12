@@ -7,8 +7,11 @@ import slick.backend.DatabaseConfig
 import slick.driver.JdbcProfile
 import scala.concurrent.Future
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import com.github.tototoshi.slick.MySQLJodaSupport._
 
-import utils.{SortingPaginationWrapper, TaggedQuestion}
+import play.api.Logger
+
+import utils.{QuestionFavouriteWrapper, SortingPaginationWrapper, TaggedQuestion}
 
 class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Question] {
   import dbConfig.driver.api._
@@ -93,10 +96,81 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   import org.joda.time.DateTime
 
-  def findAll(settings: SortingPaginationWrapper): Future[Seq[Question]] =
-    db.run(questions.
-      sortBy(_.title.desc).
-      result)
+/*  def findAll(params: SortingPaginationWrapper):
+      Future[Seq[QuestionFavouriteWrapper]] = {
+
+    /*    val query = questions.
+      sortBy(sorter(_, params)).
+      drop(getPage(params.page, params.resultsPerPage))
+      .take(params.resultsPerPage).
+ result */
+    // val queryFavourites = questions.
+    //   join(favouriteQuestions).on(_.id === _.question_id).
+    //   groupBy { case (question, favouriteQuestion) => question }.
+    //   map { case (question, favouriteQuestions) =>
+    //     question -> favouriteQuestions.length
+    //   }// .
+    //   // sortBy(sorter(_, params)).
+    //   // drop(getPage(params.page, params.resultsPerPage))
+    //   // .take(params.resultsPerPage)
+    //   .result
+
+    val queryFavourites = favouriteQuestions.
+      groupBy(_.question_id).
+      map { case (questionId, favourites) => questionId -> favourites.length}.
+      result
+
+    // val qA = answers.
+    //   groupBy(_.question_id).
+    //   map { case (questionId, answers) => questionId -> answers.length }.
+    //   result
+
+    val queryAnswers = questions.
+      joinLeft(answers).on(_.id === _.question_id).
+      joinLeft(favouriteQuestions).on {
+        case ((question, answer), fq) => question.id === fq.question_id}.
+      groupBy { case ((question, answer), fq) => question }.
+      map { case (question, sub) =>
+        question -> sub._1.list.length// sub.map { case ((question, answer), fq) =>
+        //   answer.length
+        // }
+      }.
+      sortBy(sorter(_, params)).
+      drop(getPage(params.page, params.resultsPerPage))
+      .take(params.resultsPerPage)
+      .result
+
+    for {
+      qas <- db.run(queryAnswers)
+      qfs <- db.run(queryFavourites)
+    } yield qas.map { qa =>
+      val question: Question = qa._1
+      val question_id: Long = qa._1.id.get
+      val answersCount: Int = qa._2
+      Logger.debug(s"as: ${answersCount}")
+      val questionFavouritesMap: Map[Long, Int] = qfs.toMap
+      val favouritesCount: Int = questionFavouritesMap.get(question_id).getOrElse(0)
+      QuestionFavouriteWrapper(question, favouritesCount, answersCount)
+    }
+
+    // for {
+    //   queryFavouritesResult <- db.run(queryFavourites)
+    //   questionFavourites  <- Future { queryFavouritesResult }
+    //   queryAnswersResult <- db.run(queryAnswers)
+    //   questionAnswers    <- Future { queryAnswersResult }
+    //   mrs <- Future { merge(questionFavourites,questionAnswers) }
+    // } yield mrs.map { qf =>
+    //   QuestionFavouriteWrapper(qf._1, qf._2, qf._3)
+    // }
+    //db.run(query)
+  } */
+
+  def merge(t1: Seq[(Question, Int)], t2: Seq[(Question, Int)]): Seq[(Question, Int, Int)] = {
+    val m1 = t1.toMap
+    val m2 = t2.toMap
+    m1.map(kv => (kv._1, kv._2, m2.get(kv._1).getOrElse(0))).toSeq
+  }
+
 
   // change query in order to join tags and answers
   override def findById(id: Long): Future[Option[Question]] =
@@ -132,6 +206,28 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   override def remove(id: Long): Future[Int] =
     db.run(questions.filter(_.id === id).delete)
+
+  private def sorter (qfcount: (QuestionTable, Rep[Int]), settings: SortingPaginationWrapper) =
+  {
+    val (question, favouriteCount) = qfcount
+    settings match {
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "title" && direction == "desc" => question.title.desc
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "title" && direction == "asc" => question.title.asc
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "date" && direction == "desc" => question.created_at.desc
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "date" && direction == "asc" => question.created_at.asc
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "favouriteCount" && direction == "asc" => favouriteCount.asc
+    case SortingPaginationWrapper(sort_by,_,_,direction)
+        if sort_by == "favouriteCount" && direction == "desc" => favouriteCount.asc
+    }
+  }
+
+  private def getPage(pageNum: Int, resultsPerPage: Int) =
+    resultsPerPage * (pageNum - 1)
 
   private def insertTagsQuery(updatedTags: Seq[TagsQuestions]) =
     questionTags ++= updatedTags
@@ -191,6 +287,6 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     (questionsReturningRow += question) andThen (findByTitleQuery(question.title))
   private def questionsReturningRow =
     questions returning questions.map(_.id) into { (q, id) =>
-      q.copy(id = id)
+      q.copy(id = Some(id))
     }
 }

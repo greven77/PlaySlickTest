@@ -53,6 +53,6 @@ class AnswerDao(dbConfig: DatabaseConfig[JdbcProfile]) {
   }
   private def answersReturningRow =
     answers returning answers.map(_.id) into { (a, id) =>
-      a.copy(id = id)
+      a.copy(id = Some(id))
     }
 }
