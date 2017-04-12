@@ -36,14 +36,25 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
     )
   }
 
-  def tagged(tag: String) = Action.async { request =>
-    questionDao.findByTag(tag).map { questions =>
-      Ok(Json.toJson(questions))
-    }.recoverWith {
-      case e: SQLIntegrityConstraintViolationException  =>
-        Future { NotFound }
-      case _  => Future { InternalServerError }
-    }
+  def tagged(tag: String) = Action.async(parse.json) { request =>
+    val result = request.body.validate[SortingPaginationWrapper]
+    result.fold (
+      valid = { params =>
+        questionDao.findByTag(tag, params).map { questions =>
+          Logger.debug(s"count: ${questions.length}")
+          Ok(Json.toJson(questions))
+        }.recoverWith {
+          case e: SQLIntegrityConstraintViolationException  =>
+            Future { NotFound }
+          case _  => Future { InternalServerError }
+        }
+      },
+      invalid = { errors =>
+        Future.successful(
+          BadRequest(JsError.toJson(errors))
+        )
+      }
+    )
   }
 
   // shows only the content of the question excluding answers

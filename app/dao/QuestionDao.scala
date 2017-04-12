@@ -8,8 +8,7 @@ import slick.driver.JdbcProfile
 import scala.concurrent.Future
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import com.github.tototoshi.slick.MySQLJodaSupport._
-
-import play.api.Logger
+import org.joda.time.DateTime
 
 import utils.{QuestionFavouriteWrapper, SortingPaginationWrapper, TaggedQuestion}
 
@@ -94,10 +93,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   def removeFavourite(fq: FavouriteQuestion): Future[Int] =
     db.run(findFQ(fq.question_id, fq.user_id).delete)
 
-  import org.joda.time.DateTime
-
-  def findAll(params: SortingPaginationWrapper):
-      Future[Seq[QuestionFavouriteWrapper]] = {
+  def findAll(params: SortingPaginationWrapper): Future[Seq[QuestionFavouriteWrapper]] = {
 
     val qr = for {
       (question, sub) <- questions
@@ -123,18 +119,54 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     })
   }
 
-  def merge(t1: Seq[(Question, Int)], t2: Seq[(Question, Int)]): Seq[(Question, Int, Int)] = {
-    val m1 = t1.toMap
-    val m2 = t2.toMap
-    m1.map(kv => (kv._1, kv._2, m2.get(kv._1).getOrElse(0))).toSeq
+  def sortedAndPaginatedQuestions(params: SortingPaginationWrapper,
+    questions: Query[models.QuestionTable,models.Question,Seq]) = {
+        val qr = for {
+      (question, sub) <- questions
+      .joinLeft(answers).on { case (question, answer) =>
+          question.id === answer.question_id
+      }.joinLeft(favouriteQuestions).on { case ((question, _), favouriteQuestion) =>
+          question.id === favouriteQuestion.question_id
+      }.groupBy { case ((question, _), _) =>
+          question
+      }
+    } yield (question, sub.map(_._1._2).map(_.map(_.id)).countDistinct, sub.map(_._2)
+      .map(_.map(_.user_id)).countDistinct)
+
+    val sortPaginateQr = qr.sortBy(sorter(_, params)).
+      drop(getPage(params.page, params.resultsPerPage)).
+      take(params.resultsPerPage)
+
+    val action = sortPaginateQr.result.
+      map { case q =>
+      q.map { case ((question, answer, fq)) =>
+        QuestionFavouriteWrapper(question, fq, answer)
+      }
+      }
+
+    db.run(action)
   }
 
-
-  // change query in order to join tags and answers
   override def findById(id: Long): Future[Option[Question]] =
     db.run(findByIdQuery(id))
 
-  def findByTag(tag: String): Future[Seq[Question]] = {
+  def findByTag(tag: String, params: SortingPaginationWrapper):
+      Future[Seq[QuestionFavouriteWrapper]]
+  = {
+    val query  = questions.
+      join(questionTags).on(_.id === _.question_id).
+      join(tags.filter(_.text === tag)).on {
+        case ((question, questionTag), tag) =>
+          questionTag.tag_id === tag.id
+      }.map {
+        case ((question, _), _) =>
+          question
+      }
+
+    sortedAndPaginatedQuestions(params,query)
+  }
+
+  def oldFindByTag(tag: String): Future[Seq[Question]] = {
     val findQuestionsQuery = tags.filter(_.text === tag).
       join(questionTags).on(_.id === _.tag_id).
       join(questions).on {
