@@ -58,7 +58,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
   }
 
   def setCorrectAnswer(qId: Long, correct_answer_id: Option[Long]): Future[Option[Question]]  = {
-    
+
     val filteringQuery = questions.filter(_.id === qId).
       join(answers).on {
         case (question, answer) => answer.question_id === question.id &&
@@ -115,10 +115,14 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     sortedAndPaginatedQuestions(params,query)
   }
 
-  def findAndRetrieveThread(id: Long, logged_user_id: Option[Long] = None,
-    params: SortingPaginationWrapper): Future[QuestionThread] = {
+  def findAndRetrieveThread(id: Long, params: SortingPaginationWrapper,
+    logged_user: Option[User] = None): Future[QuestionThread] = {
     val filteredAnswers = answers.filter(_.question_id === id)
-
+    val logged_user_id: Option[Long] = logged_user match {
+      case Some(user) => user.id
+      case _ => None
+    }
+    
     for {
       votesMap <- db.run(answerVotesQuery(filteredAnswers, logged_user_id))
       question <- db.run(findByIdQuery(id))

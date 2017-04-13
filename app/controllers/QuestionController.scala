@@ -14,7 +14,8 @@ import scala.util.Success
 
 import utils.{TaggedQuestion, SortingPaginationWrapper}
 
-class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) extends Controller {
+class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator,
+  sessionInfo: LoginChecker) extends Controller {
   // add pagination and sorting later
   import play.api.Logger
 
@@ -41,7 +42,6 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
     result.fold (
       valid = { params =>
         questionDao.findByTag(tag, params).map { questions =>
-          Logger.debug(s"count: ${questions.length}")
           Ok(Json.toJson(questions))
         }.recoverWith {
           case e: SQLIntegrityConstraintViolationException  =>
@@ -69,13 +69,13 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator) e
     }
   }
 
-  def showThread(id: Long) = Action.async(parse.json) { request =>
+  def showThread(id: Long) = sessionInfo.LoginInfo.async(parse.json) { request =>
     val answerReads = SortingPaginationWrapper.sortingPaginationAnswerReads
     val result = request.body.validate[SortingPaginationWrapper](answerReads)
 
     result.fold(
       valid = { spw =>
-        questionDao.findAndRetrieveThread(id, params = spw).map(qt => Ok(Json.toJson(qt))).
+        questionDao.findAndRetrieveThread(id, spw, request.user).map(qt => Ok(Json.toJson(qt))).
           recoverWith {
             case e: SQLIntegrityConstraintViolationException => Future { NotFound }
             case _ => Future { InternalServerError}

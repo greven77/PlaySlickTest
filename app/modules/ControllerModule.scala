@@ -21,4 +21,5 @@ trait ControllerModule {
   lazy val questionController = wire[QuestionController]
   lazy val answerController = wire[AnswerController]
   lazy val securedAuthenticator = wire[SecuredAuthenticator]
+  lazy val loginChecker = wire[LoginChecker]
 }
