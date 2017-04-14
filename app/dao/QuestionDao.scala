@@ -9,10 +9,12 @@ import scala.concurrent.Future
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import com.github.tototoshi.slick.MySQLJodaSupport._
 import org.joda.time.DateTime
+import slick.lifted.ColumnOrdered
 
 import utils.{QuestionFavouriteWrapper, SortingPaginationWrapper, TaggedQuestion}
+import utils.SortingPaginationWrapper.getPage
 
-class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Question] {
+class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile], answerDao: AnswerDao) extends BaseDao[Question] {
   import dbConfig.driver.api._
 
   val db = dbConfig.db
@@ -117,17 +119,15 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
 
   def findAndRetrieveThread(id: Long, params: SortingPaginationWrapper,
     logged_user: Option[User] = None): Future[QuestionThread] = {
-    val filteredAnswers = answers.filter(_.question_id === id)
     val logged_user_id: Option[Long] = logged_user match {
       case Some(user) => user.id
       case _ => None
     }
 
     for {
-      votesMap <- db.run(answerVotesQuery(filteredAnswers, logged_user_id))
       question <- db.run(findByIdQuery(id))
       tags     <- db.run(getTagsQuery(id))
-      answers  <- db.run(answerUsersQuery(votesMap, filteredAnswers, params))
+      answers  <- db.run(answerDao.answerUsersQuery(id,logged_user_id, params))
     } yield QuestionThread(question, tags, answers)
   }
 
@@ -186,29 +186,6 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
     }
   }
 
-    private def answerSorter (qfcount: (AnswerTable, Rep[Int]), settings: SortingPaginationWrapper) =
-  {
-    val (question, voteCount) = qfcount
-    settings match {
-      case SortingPaginationWrapper(sort_by,_,_,direction)
-          if sort_by == "created_at" && direction == "desc" => question.created_at.desc
-      case SortingPaginationWrapper(sort_by,_,_,direction)
-          if sort_by == "created_at" && direction == "asc" => question.created_at.asc
-      case SortingPaginationWrapper(sort_by,_,_,direction)
-          if sort_by == "updated_at" && direction == "desc" => question.updated_at.desc
-      case SortingPaginationWrapper(sort_by,_,_,direction)
-          if sort_by == "updated_at" && direction == "asc" => question.updated_at.asc
-      case SortingPaginationWrapper(sort_by,_,_,direction)
-          if sort_by == "votecount" && direction == "asc" => voteCount.asc
-      case SortingPaginationWrapper(sort_by,_,_,direction)
-          if sort_by == "votecount" && direction == "desc" => voteCount.desc
-      case SortingPaginationWrapper(_,_,_,_) => question.created_at.desc
-    }
-  }
-
-  private def getPage(pageNum: Int, resultsPerPage: Int) =
-    resultsPerPage * (pageNum - 1)
-
   private def insertTagsQuery(updatedTags: Seq[TagsQuestions]) =
     questionTags ++= updatedTags
 
@@ -228,56 +205,6 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
       join(tags).on(_.tag_id === _.id).
       map { case (questionTag, tag) => tag }.
       result
-
-  private def answerVotesQuery(answers: AnswersQuery, logged_user_id: Option[Long]): DBIO[Map[Long, (Int, Int)]] = {
-    answers.
-      join(votes).on(_.id === _.answer_id).result.
-      map { rows =>
-        rows.groupBy { case (answer, vote) => answer.id.get }.
-          mapValues { values =>
-            val voteSum = values.map { case (answer, vote) => vote.value}.sum
-            val userVoteValue = values.
-              filter { case (answer, vote) => vote.user_id == logged_user_id}
-              .map { case (answer, vote) => vote.value}.headOption
-            (voteSum, userVoteValue.getOrElse(0))
-          }
-      }
-  }
-
-  private def answerUsersQuery(votesMap: Map[Long, (Int, Int)], answers: AnswersQuery,
-  params: SortingPaginationWrapper) = {
-    answers.
-      join(questions).on(_.question_id  === _.id).
-      join(users).on { case ((answer, question), user) => question.created_by === user.id }.
-    //  sortBy(_.user.id). // answerSorter (qfcount: (AnswerTable, Rep[Int]), settings: SortingPaginationWrapper)
-      result.
-      map { rows =>
-        rows.map { case ((answer, question), user) =>
-          (answer, user, votesMap.getOrElse(answer.id.get, (0,0)))
-        }
-    }
-  }
-
-    private def answerUsersQuery2(question_id: Option[Long], logged_user_id: Option[Long],
-      params: SortingPaginationWrapper) = {
-
-      val qr = answers.filter(_.question_id === question_id).
-        joinLeft(votes).on(_.id === _.answer_id).
-        join(users).on { case ((answer, vote), user) => answer.user_id === user.id }.
-        groupBy { case ((answer, vote), user) => (answer, user) }.
-        map { case ((answer, user), votes) => (answer, user,
-          votes.map {
-            case ((answer, vote), user) =>
-              vote.map(_.value)
-          }.sum ,
-          votes.map {
-            case ((answer, vote), user) =>
-              vote.filter(_.user_id == user.id).map(_.value)
-          }.sum
-        )
-        }
-  }
-
 
   private def findByIdQuery(id: Long) =
     questions.filter(_.id === id).result.headOption

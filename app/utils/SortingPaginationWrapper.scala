@@ -46,4 +46,7 @@ object SortingPaginationWrapper {
 
   def directionValidator(param: String) =
     List("asc", "desc").contains(param.toLowerCase)
+
+  def getPage(pageNum: Int, resultsPerPage: Int) =
+    resultsPerPage * (pageNum - 1)
 }

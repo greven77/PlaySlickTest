@@ -13,18 +13,16 @@ import scala.util.Failure
 import scala.util.Success
 
 import utils.{TaggedQuestion, SortingPaginationWrapper}
+import utils.SortingPaginationWrapper.sortingPaginationAnswerReads
 
 class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator,
   sessionInfo: LoginChecker) extends Controller {
-  // add pagination and sorting later
-  import play.api.Logger
 
   def index = Action.async(parse.json) { request =>
     val result =
       request.body.validate[SortingPaginationWrapper]
     result.fold(
       valid = { r =>
-//        Future{Ok}
        questionDao.findAll(r).map { questions =>
           Ok(Json.toJson(questions))
         }
@@ -57,9 +55,7 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator,
     )
   }
 
-  // shows only the content of the question excluding answers
   def show(id: Long) = Action.async { request =>
-    // change query in order to join tags and answers
     questionDao.findById(id).map(q => Ok(Json.toJson(q))).recoverWith {
       case _ => Future { NotFound }
     }.recoverWith {
@@ -70,8 +66,7 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator,
   }
 
   def showThread(id: Long) = sessionInfo.LoginInfo.async(parse.json) { request =>
-    val answerReads = SortingPaginationWrapper.sortingPaginationAnswerReads
-    val result = request.body.validate[SortingPaginationWrapper](answerReads)
+    val result = request.body.validate[SortingPaginationWrapper](sortingPaginationAnswerReads)
 
     result.fold(
       valid = { spw =>

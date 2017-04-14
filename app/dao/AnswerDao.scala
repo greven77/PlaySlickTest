@@ -1,18 +1,22 @@
 package dao
 
-import models.{Answer, AnswerTable, Vote, VoteTable}
-import utils.AnswerVoteWrapper
+import models.{Answer, AnswerTable, Vote, VoteTable, UserTable}
+import utils.{AnswerVoteWrapper, SortingPaginationWrapper}
+import utils.SortingPaginationWrapper.getPage
 import scala.concurrent.Future
 import slick.backend.DatabaseConfig
 import slick.driver.JdbcProfile
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
-class AnswerDao(dbConfig: DatabaseConfig[JdbcProfile]) {
+import com.github.tototoshi.slick.MySQLJodaSupport._
+
+class AnswerDao(val dbConfig: DatabaseConfig[JdbcProfile]) {
   import dbConfig.driver.api._
 
   val db = dbConfig.db
   val answers = TableQuery[AnswerTable]
   val votes = TableQuery[VoteTable]
+  val users = TableQuery[UserTable]
 
   def add(answer: Answer): Future[Answer] =
     db.run(answersReturningRow += answer)
@@ -51,6 +55,53 @@ class AnswerDao(dbConfig: DatabaseConfig[JdbcProfile]) {
 
     db.run(votes.insertOrUpdate(user_vote) andThen answerWithVotes)
   }
+
+  def answerUsersQuery(question_id: Long, logged_user_id: Option[Long],
+    params: SortingPaginationWrapper) = {
+
+    val qr = answers.filter(_.question_id === question_id).
+      joinLeft(votes).on(_.id === _.answer_id).
+      join(users).on { case ((answer, vote), user) => answer.user_id === user.id }.
+      groupBy { case ((answer, vote), user) => (answer, user) }.
+      map { case ((answer, user), votes) => (answer, user,
+        votes.map {
+          case ((answer, vote), user) =>
+            vote.map(_.value)
+        }.sum.getOrElse(0),
+        votes.map {
+          case ((answer, vote), user) =>
+            vote.filter(_.user_id === logged_user_id).map(_.value)
+        }.sum.getOrElse(0)
+      )
+      }
+
+    val sortPaginateQr = qr.sortBy(answerSorter(_, params)).
+      drop(getPage(params.page, params.resultsPerPage)).
+      take(params.resultsPerPage)
+    sortPaginateQr.result
+  }
+
+  private def answerSorter (qfcount: (AnswerTable, UserTable, Rep[Int], Rep[Int]),
+    settings: SortingPaginationWrapper) =
+  {
+    val (answer, user, voteCount, userVoteValue) = qfcount
+    settings match {
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "created_at" && direction == "desc" => answer.created_at.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "created_at" && direction == "asc" => answer.created_at.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "updated_at" && direction == "desc" => answer.updated_at.desc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "updated_at" && direction == "asc" => answer.updated_at.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "votecount" && direction == "asc" => voteCount.asc
+      case SortingPaginationWrapper(sort_by,_,_,direction)
+          if sort_by == "votecount" && direction == "desc" => voteCount.desc
+      case SortingPaginationWrapper(_,_,_,_) => answer.created_at.desc
+    }
+  }
+
   private def answersReturningRow =
     answers returning answers.map(_.id) into { (a, id) =>
       a.copy(id = Some(id))
