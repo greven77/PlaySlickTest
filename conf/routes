@@ -2,9 +2,9 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 GET     /                           controllers.MainController.index
-POST     /register                  controllers.AuthController.register
-#POST    /login                     controllers.AuthController.login
-#PUT     /logout                    controllers.AuthController.logout
+POST    /api/register                   controllers.AuthController.register
+POST    /api/login                      controllers.AuthController.login
+GET     /api/logout                     controllers.AuthController.logout
 
 # tags
 GET      /api/tags                  controllers.TagController.index

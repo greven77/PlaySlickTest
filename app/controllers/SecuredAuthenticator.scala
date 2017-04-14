@@ -28,19 +28,19 @@ class SecuredAuthenticator(userDao: UserDao, questionDao: QuestionDao,
          JwtUtility.decodePayload(jwtToken).fold {
            Future.successful(Unauthorized("Invalid credential 1"))
          } { payload =>
-           val userCredentials = Json.parse(payload).validate[UserPayloadWrapper].get
+           //val userCredentials = Json.parse(payload).validate[UserPayloadWrapper].get
 
-           val userF: Future[Option[User]] = userDao.findByEmail(userCredentials.email).
+           val userF: Future[Option[User]] = userDao.findByToken(jwtToken).
              map(identity)
              .recoverWith {
              case _ => Future { None }
              }
 
            for {
-             user <- userF
-             isAccessGranted <- checkAuthorized(request.toString, user.get)
-             block <- decide(isAccessGranted, user, request, block)
-           } yield block
+               user <- userF
+               isAccessGranted <- checkAuthorized(request.toString, user)
+               block <- decide(isAccessGranted, user, request, block)
+             } yield block
 
            //userF.flatMap(usr => block(UserRequest(usr.get, request)))
          }
@@ -56,11 +56,10 @@ class SecuredAuthenticator(userDao: UserDao, questionDao: QuestionDao,
       else
         Future.successful(Unauthorized)
 
-    def checkAuthorized(requestString: String, user: User): Future[Boolean] = {
+    def checkAuthorized(requestString: String, user: Option[User]): Future[Boolean] = {
       val requestItems = requestString.split(" ")
       val Array(verb, url) = requestItems
 
-//      val reg = """(\/api\/[a-z]+)\/(\d+).*?(\/([a-z]+)\/(\d+))?$""".r
       val reg = """(\/api\/[a-z]+)[\/]?(\d*).*?(\/([a-z]+)\/(\d+))?$""".r
 
       val groupsList =
@@ -68,34 +67,41 @@ class SecuredAuthenticator(userDao: UserDao, questionDao: QuestionDao,
           group != null && group != ""
         }
 
-      groupsList match {
-        case (List(_, id)) =>
-          isAuthorized(requestItems, user,  id.toLong)
-        case List(_, id, _, _, child_id) =>
-          isAuthorized(requestItems, user, id.toLong, child_id.toLong)
+      user match {
+        case Some(user) => groupsList match {
+          case (List(_, id)) =>
+            isAuthorized(requestItems, user,  id.toLong)
+          case List(_, id, _, _, child_id) =>
+            isAuthorized(requestItems, user, id.toLong, child_id.toLong)
 
-        case _ => Future { true }
+          case _ => Future { true }
+        }
+
+        case _ => Future { false }
       }
     }
 
-    def isAuthorized(route: Array[String], user:User, parent_id: Long = -1,
-      child_id: Long = -1): Future[Boolean] = route match {
-      case Array("PUT", url) if url.matches("/api/questions/[0-9]+") =>
-        isQuestionOwner(user, parent_id)
-      case Array("PUT", url) if url.matches("/api/questions/[0-9]+/correctanswer") =>
-        isQuestionOwner(user, parent_id)
-      case Array("DELETE", url) if url.matches("/api/questions/[0-9]+") =>
-        isQuestionOwner(user, parent_id)
-      case Array("PUT",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
-        isAnswerOwner(user, parent_id)
-      case Array("DELETE",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
-        for {
-          answerOwner <- isAnswerOwner(user, child_id)
-          questionOwner <- isQuestionOwner(user, parent_id)
-        } yield answerOwner || questionOwner
-      case Array("POST", url) if url.matches("/api/answer/[0-9]+/vote") =>
-        isAnswerOwner(user, parent_id).map(!_)
-      case _ => Future { false }
+    def isAuthorized(route: Array[String], user: User, parent_id: Long = -1,
+      child_id: Long = -1): Future[Boolean] = {
+
+      route match {
+        case Array("PUT", url) if url.matches("/api/questions/[0-9]+") =>
+          isQuestionOwner(user, parent_id)
+        case Array("PUT", url) if url.matches("/api/questions/[0-9]+/correctanswer") =>
+          isQuestionOwner(user, parent_id)
+        case Array("DELETE", url) if url.matches("/api/questions/[0-9]+") =>
+          isQuestionOwner(user, parent_id)
+        case Array("PUT",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
+          isAnswerOwner(user, parent_id)
+        case Array("DELETE",url) if url.matches("/api/questions/[0-9]+/answer/[0-9]+") =>
+          for {
+            answerOwner <- isAnswerOwner(user, child_id)
+            questionOwner <- isQuestionOwner(user, parent_id)
+          } yield answerOwner || questionOwner
+        case Array("POST", url) if url.matches("/api/answer/[0-9]+/vote") =>
+          isAnswerOwner(user, parent_id).map(!_)
+        case _ => Future { false }
+      }
     }
 
     def isQuestionOwner(user: User, id: Long): Future[Boolean] =

@@ -1,6 +1,6 @@
 package dao
 
-import models.{User, UserTable}
+import models.{User, UserTable, UserLogin}
 import org.mindrot.jbcrypt.BCrypt
 import play.api.libs.json.Json
 import scala.concurrent.Future
@@ -42,16 +42,44 @@ class UserDao(dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[User] {
   def findByUsername(username: String): Future[Option[User]] =
     db.run(users.filter(_.username === username).result.headOption)
 
+  def findByToken(token: String): Future[Option[User]] =
+    db.run(users.filter(_.token === token).result.headOption)
+
   override def remove(id: Long): Future[Int] = db.run(users.filter(_.id === id).delete)
 
-  def login(loginUser: User): Future[Option[User]] = {
-    val maybeUser = findByUsername(loginUser.username)
-    maybeUser.map(u =>
+  def login(userLogin: UserLogin): Future[Option[User]] = {
+    val maybeUser = findByUsername(userLogin.username)
+    val userF: Future[Option[User]] = maybeUser.map(u =>
       u match {
-        case user: Some[User] if (BCrypt.checkpw(loginUser.password, user.get.password)) =>  user
+        case user: Some[User] if (BCrypt.checkpw(userLogin.password, user.get.password)) =>  {
+          updateToken(user)
+        }
         case None => None
       }
     )
+
+    for {
+      user <- userF
+      u <- findByUsername(user.get.username)
+    } yield u
+  }
+
+  def logout(user: User): Future[Int] = {
+    db.run(
+      users.filter(_.id === user.id).map(_.token).
+        update(None)
+    )
+  }
+
+  private def updateToken(u: Option[User]) = {
+    val user = u.get
+    val payload = Json.toJson(user).toString
+    val token = Some(JwtUtility.createToken(payload))
+    db.run(
+      users.filter(_.id === user.id).map(_.token).
+        update(token)
+    )
+    u
   }
 
   private def hashPW(password: String) =

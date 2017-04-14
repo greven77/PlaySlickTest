@@ -1,5 +1,6 @@
 package models
 
+import play.api.data.validation.ValidationError
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
@@ -16,7 +17,6 @@ case class User(
 )
 
 object User {
-  //implicit val format = Json.format[User]
   implicit val userReads: Reads[User] = (
     (JsPath \ "id").readNullable[Long] and
     (JsPath \ "username").read[String] and
@@ -35,6 +35,15 @@ object User {
       "token"  -> user.token
     )
   }
+
+  val profileWrites = new Writes[Option[User]] {
+    def writes(user: Option[User] ) = Json.obj(
+      "id" -> user.map(_.id),
+      "username" -> user.map(_.username),
+      "fullname" -> user.map(_.fullname),
+      "email" -> user.map(_.email)
+    )
+  }
 }
 
 class UserTable(tag: SlickTag) extends Table[User](tag, "users") {
@@ -46,4 +55,10 @@ class UserTable(tag: SlickTag) extends Table[User](tag, "users") {
   def token = column[Option[String]]("token")
 
   def * = (id, username, fullname, email, password, token) <> ((User.apply _).tupled, User.unapply _)
+}
+
+case class UserLogin(username: String, password: String)
+
+object UserLogin {
+  implicit val userLoginReads = Json.reads[UserLogin]
 }
