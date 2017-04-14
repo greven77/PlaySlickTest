@@ -122,7 +122,7 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
       case Some(user) => user.id
       case _ => None
     }
-    
+
     for {
       votesMap <- db.run(answerVotesQuery(filteredAnswers, logged_user_id))
       question <- db.run(findByIdQuery(id))
@@ -255,8 +255,29 @@ class QuestionDao(val dbConfig: DatabaseConfig[JdbcProfile]) extends BaseDao[Que
         rows.map { case ((answer, question), user) =>
           (answer, user, votesMap.getOrElse(answer.id.get, (0,0)))
         }
-      }
+    }
   }
+
+    private def answerUsersQuery2(question_id: Option[Long], logged_user_id: Option[Long],
+      params: SortingPaginationWrapper) = {
+
+      val qr = answers.filter(_.question_id === question_id).
+        joinLeft(votes).on(_.id === _.answer_id).
+        join(users).on { case ((answer, vote), user) => answer.user_id === user.id }.
+        groupBy { case ((answer, vote), user) => (answer, user) }.
+        map { case ((answer, user), votes) => (answer, user,
+          votes.map {
+            case ((answer, vote), user) =>
+              vote.map(_.value)
+          }.sum ,
+          votes.map {
+            case ((answer, vote), user) =>
+              vote.filter(_.user_id == user.id).map(_.value)
+          }.sum
+        )
+        }
+  }
+
 
   private def findByIdQuery(id: Long) =
     questions.filter(_.id === id).result.headOption
