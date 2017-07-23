@@ -24,6 +24,7 @@ POST   /api/questions                     controllers.QuestionController.create
 PUT    /api/questions/:id                 controllers.QuestionController.update(id: Long)
 #must be thread owner
 PUT    /api/questions/:id/correctanswer   controllers.QuestionController.setCorrectAnswer(id: Long)
+PUT    /api/questions/:id/correctanswer   controllers.QuestionController.unsetCorrectAnswer(id: Long)
 #must be thread owner
 DELETE /api/questions/:id                 controllers.QuestionController.destroy(id: Long)
 

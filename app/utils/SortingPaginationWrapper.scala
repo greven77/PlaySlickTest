@@ -36,7 +36,7 @@ object SortingPaginationWrapper {
     ((JsPath \ "direction").read[String](directionValidate) orElse Reads.pure("desc"))
   )(SortingPaginationWrapper.apply _)
 
-
+//  implicit val sortingPAginationWrites = Json.writes[SortingPaginationWrapper]
   def sortByValidator(criteria: String) =
     List("date", "votecount", "title", "answercount", "favouritecount")
       .contains(criteria.toLowerCase)

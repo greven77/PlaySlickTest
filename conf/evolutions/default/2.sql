@@ -41,7 +41,7 @@ CREATE TABLE answers(
 ALTER TABLE "questions" CONSTRAINT "answer_fk" FOREIGN KEY (correct_answer) REFERENCES answers(id);
 # --- !Downs
 
-DROP TABLE TagsQuestions;
 DROP TABLE tags;
 DROP TABLE questions;
+DROP TABLE TagsQuestions;
 DROP TABLE answers;

@@ -5,7 +5,7 @@ import javax.naming.AuthenticationException
 import models.{Question, FavouriteQuestion}
 import java.sql._
 import play.api.libs.json._
-import play.api.mvc.{Action, Controller}
+import play.api.mvc.{Action, Controller, Request}
 
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -18,9 +18,15 @@ import utils.SortingPaginationWrapper.sortingPaginationAnswerReads
 class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator,
   sessionInfo: LoginChecker) extends Controller {
 
-  def index = Action.async(parse.json) { request =>
-    val result =
-      request.body.validate[SortingPaginationWrapper]
+  def index = Action.async { request =>
+   // val result =
+   //request.body.validate[SortingPaginationWrapper]
+   //val result = Json.toJson(SortingPaginationWrapper(sort_by, page, resultsPerPage, direction))
+    //  .validate[SortingPaginationWrapper]
+
+    val result = headersPaginationWrapper(request)
+//    import play.api.Logger
+//    Logger.debug(s"$result")
     result.fold(
       valid = { r =>
        questionDao.findAll(r).map { questions =>
@@ -150,6 +156,23 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator,
     }
   }
 
+  def unsetCorrectAnswer(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
+    (request.body \ "answer_id").validate[Long] match {
+      case a: JsSuccess[Long] => {
+        val answer_id = Some(a.get)
+        questionDao.setCorrectAnswer(id, None).
+          map(updatedQuestion => Accepted(Json.toJson(updatedQuestion))).
+          recoverWith {
+            case e: SQLIntegrityConstraintViolationException =>
+              Future { NotFound(s"${e.getMessage()}")}
+            case _ => Future { InternalServerError }
+          }
+      }
+
+      case e: JsError => Future { BadRequest }
+    }
+   }
+
   def destroy(id: Long) = auth.JWTAuthentication.async(parse.json) { request =>
     questionDao.remove(id).map(question => NoContent).
       recoverWith {
@@ -206,5 +229,16 @@ class QuestionController(questionDao: QuestionDao, auth: SecuredAuthenticator,
     ).recoverWith {
       case _ => Future {None}
     }
+  }
+
+  def headersPaginationWrapper(request: Request[Any]) = {
+    val sort_by = request.headers.get("sort_by").getOrElse("date")
+    val page = request.headers.get("page").getOrElse("0")
+    val resultsPerPage = request.headers.get("resultsPerPage").getOrElse("25")
+    val direction = request.headers.get("direction").getOrElse("desc")
+
+    Json.obj("sort_by" -> sort_by, "page" -> page,
+      "resultsPerPage" -> resultsPerPage, "direction" -> direction)
+      .validate[SortingPaginationWrapper]
   }
 }
